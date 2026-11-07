@@ -257,36 +257,66 @@
       <br>
     </div>
     <br>
-    <FtFlexBox>
+    <FtFlexBox class="screenshotFolderContainer">
+      <p class="screenshotFilenamePatternTitle">
+        {{ t('Settings.Player Settings.Transcript.Transcript') }}
+      </p>
+    </FtFlexBox>
+    <FtFlexBox class="screenshotFolderContainer">
+      <p class="screenshotFilenamePatternTitle">
+        {{ t('Settings.Player Settings.Transcript.Service URL') }}
+        <FtTooltip
+          class="selectTooltip"
+          position="bottom"
+          :tooltip="t('Settings.Player Settings.Transcript.Service URL Description')"
+        />
+      </p>
       <FtInput
+        class="screenshotFilenamePatternInput"
         :placeholder="t('Settings.Player Settings.Transcript.Service URL')"
         :value="transcriptionServiceUrl"
         :show-action-button="false"
+        :show-label="false"
         @blur="updateTranscriptionServiceUrl"
       />
     </FtFlexBox>
-    <FtFlexBox>
+    <FtFlexBox class="screenshotFolderContainer">
+      <p class="screenshotFilenamePatternTitle">
+        {{ t('Settings.Player Settings.Transcript.Token') }}
+      </p>
       <FtInput
+        class="screenshotFilenamePatternInput"
         :placeholder="t('Settings.Player Settings.Transcript.Token')"
         :value="transcriptionToken"
         :show-action-button="false"
+        :show-label="false"
         @blur="updateTranscriptionToken"
       />
     </FtFlexBox>
-    <FtFlexBox>
+    <FtFlexBox class="screenshotFolderContainer">
+      <p class="screenshotFilenamePatternTitle">
+        {{ t('Settings.Player Settings.Transcript.Seconds Before') }}
+      </p>
       <FtInput
+        class="screenshotFilenamePatternInput"
         :placeholder="t('Settings.Player Settings.Transcript.Seconds Before')"
-        :value="transcriptionSecondsBefore.toString()"
+        :value="String(transcriptionSecondsBefore ?? 60)"
         :show-action-button="false"
-        @blur="value => updateTranscriptionSecondsBefore(Number(value) || 60)"
+        :show-label="false"
+        @blur="value => updateTranscriptionSecondsBefore(parseTranscriptionSeconds(value, 60))"
       />
     </FtFlexBox>
-    <FtFlexBox>
+    <FtFlexBox class="screenshotFolderContainer">
+      <p class="screenshotFilenamePatternTitle">
+        {{ t('Settings.Player Settings.Transcript.Seconds After') }}
+      </p>
       <FtInput
+        class="screenshotFilenamePatternInput"
         :placeholder="t('Settings.Player Settings.Transcript.Seconds After')"
-        :value="transcriptionSecondsAfter.toString()"
+        :value="String(transcriptionSecondsAfter ?? 180)"
         :show-action-button="false"
-        @blur="value => updateTranscriptionSecondsAfter(Number(value) || 180)"
+        :show-label="false"
+        @blur="value => updateTranscriptionSecondsAfter(parseTranscriptionSeconds(value, 180))"
       />
     </FtFlexBox>
   </FtSettingsSection>
@@ -752,6 +782,31 @@ function updateTranscriptionServiceUrl(value) {
  */
 function updateTranscriptionToken(value) {
   store.dispatch('updateTranscriptionToken', value)
+}
+
+/**
+ * Coerce a user-entered seconds value for the transcript offsets.
+ * An empty or non-numeric entry reverts to the given default; a finite number,
+ * including 0, is stored as-is; negative values are clamped to 0 so the result
+ * is always a valid, expressible offset.
+ * @param {string} value
+ * @param {number} defaultSeconds
+ * @returns {number}
+ */
+function parseTranscriptionSeconds(value, defaultSeconds) {
+  const trimmed = typeof value === 'string' ? value.trim() : value
+
+  if (trimmed === '' || trimmed === null || trimmed === undefined) {
+    return defaultSeconds
+  }
+
+  const parsed = Number(trimmed)
+
+  if (!Number.isFinite(parsed)) {
+    return defaultSeconds
+  }
+
+  return Math.max(0, parsed)
 }
 
 /**
