@@ -19,6 +19,7 @@ import {
 } from '../constants'
 import * as baseHandlers from '../datastores/handlers/base'
 import { extractExpiryTimestamp, ImageCache } from './ImageCache'
+import { registerTranscribeIpc } from './transcribeIpc'
 import { constants as fsConstants, existsSync } from 'fs'
 import asyncFs from 'fs/promises'
 import { promisify } from 'util'
@@ -2170,6 +2171,8 @@ function runApp() {
   })
 
   // *********** //
+
+  registerTranscribeIpc({ ipcMain })
 
   function syncOtherWindows(channel, event, payload) {
     const otherWindows = BrowserWindow.getAllWindows().filter((window) => {

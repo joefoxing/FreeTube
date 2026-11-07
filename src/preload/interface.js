@@ -140,6 +140,37 @@ export default {
     return await ipcRenderer.invoke(IpcChannels.WRITE_TO_DEFAULT_FOLDER, filename, contents)
   },
 
+  /**
+   * @param {{ videoId: string, startSeconds: number, endSeconds: number, serviceUrl: string, token: string }} payload
+   * @returns {Promise<{ jobId: string, startSeconds: number, endSeconds: number, view: object }>}
+   */
+  transcribeStart: (payload) => {
+    return ipcRenderer.invoke(IpcChannels.TRANSCRIBE_START, payload)
+  },
+
+  /**
+   * @param {string} [jobId]
+   */
+  transcribeCancel: (jobId) => {
+    ipcRenderer.send(IpcChannels.TRANSCRIBE_CANCEL, jobId)
+  },
+
+  /**
+   * @param {(view: object) => void} handler
+   * @returns {() => void} unsubscribe
+   */
+  onTranscribeStatus: (handler) => {
+    const listener = (_, view) => {
+      handler(view)
+    }
+
+    ipcRenderer.on(IpcChannels.TRANSCRIBE_STATUS, listener)
+
+    return () => {
+      ipcRenderer.off(IpcChannels.TRANSCRIBE_STATUS, listener)
+    }
+  },
+
   relaunch: () => {
     ipcRenderer.send(IpcChannels.RELAUNCH_REQUEST)
   },

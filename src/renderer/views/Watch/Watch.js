@@ -13,6 +13,7 @@ import WatchVideoLiveChat from '../../components/WatchVideoLiveChat/WatchVideoLi
 import WatchVideoPlaylist from '../../components/WatchVideoPlaylist/WatchVideoPlaylist.vue'
 import WatchVideoRecommendations from '../../components/WatchVideoRecommendations/WatchVideoRecommendations.vue'
 import FtAgeRestricted from '../../components/FtAgeRestricted/FtAgeRestricted.vue'
+import FtTranscript from '../../components/FtTranscript/FtTranscript.vue'
 import { calculateColorLuminance } from '../../helpers/colors'
 import {
   buildChaptersVttFile,
@@ -43,6 +44,7 @@ import {
 } from '../../helpers/api/invidious'
 import { sortCaptions } from '../../helpers/player/utils'
 import { MANIFEST_TYPE_SABR } from '../../helpers/player/SabrManifestParser'
+import { clampTranscriptWindow, formatTranscriptText } from '../../helpers/transcript'
 import { useI18n } from 'vue-i18n'
 
 /**
@@ -65,12 +67,16 @@ const UNAVAILABLE_VIDEO_THUMBNAILS = {
   light: 'https://www.youtube.com/img/desktop/unavailable/unavailable_video.png',
   dark: 'https://www.youtube.com/img/desktop/unavailable/unavailable_video_dark_theme.png'
 }
+// How many torn-down job ids the renderer remembers to recognise a late status
+// event. Bounded so the list cannot grow without limit over a long session.
+const TRANSCRIPT_STALE_JOB_ID_LIMIT = 5
 
 export default defineComponent({
   name: 'Watch',
   components: {
     'ft-loader': FtLoader,
     'ft-shaka-video-player': FtShakaVideoPlayer,
+    'ft-transcript': FtTranscript,
     'watch-video-info': WatchVideoInfo,
     'watch-video-chapters': WatchVideoChapters,
     'watch-video-description': WatchVideoDescription,
@@ -82,6 +88,10 @@ export default defineComponent({
   },
   beforeRouteLeave: async function (to, from, next) {
     this.handleRouteChange()
+    // Leaving the watch view tears down any in-flight transcript job through
+    // the same path the videoId watcher uses; this does not depend on the
+    // videoId watcher firing during reloadView.
+    this.teardownTranscriptJob()
     window.removeEventListener('beforeunload', this.handleWatchProgressAutoSave)
     document.removeEventListener('keydown', this.resetAutoplayInterruptionTimeout)
     document.removeEventListener('click', this.resetAutoplayInterruptionTimeout)
@@ -183,11 +193,41 @@ export default defineComponent({
       /** @type {Date|null} */
       streamingDataExpiryDate: null,
       currentPlaybackRate: null,
+
+      transcriptVisible: false,
+      transcriptState: 'idle',
+      transcriptStage: 'queued',
+      transcriptProgress: 0,
+      transcriptSegments: [],
+      transcriptWindow: { start: 0, end: 0 },
+      transcriptErrorCode: '',
+      transcriptCopied: false,
+      transcriptJobId: null,
+      // Correlation for in-flight jobs. `transcriptRequestSeq` is a
+      // monotonically increasing id captured per handleTranscribe call;
+      // `transcriptStaleJobIds` records the job ids of jobs we deliberately
+      // tore down (user cancel / video change). Together they let a late
+      // rejection or status event from a superseded or cancelled job be
+      // discarded instead of clobbering the request that is actually current.
+      transcriptRequestSeq: 0,
+      transcriptStaleJobIds: [],
+      // True while a job is being torn down on purpose (user cancel or video
+      // change), so the in-flight rejection resolves as "cancelled" and never
+      // as an error.
+      transcriptCancelled: false,
+      /** @type {null | (() => void)} */
+      transcribeStatusUnsubscribe: null,
     }
   },
   computed: {
     historyEntry: function () {
       return this.$store.getters.getHistoryCacheById[this.videoId]
+    },
+    transcribeEnabled: function () {
+      return process.env.IS_ELECTRON && this.transcriptionServiceUrl !== ''
+    },
+    transcriptionServiceUrl: function () {
+      return this.$store.getters.getTranscriptionServiceUrl
     },
     historyEntryExists: function () {
       return typeof this.historyEntry !== 'undefined'
@@ -347,6 +387,18 @@ export default defineComponent({
     userPlaylistsReady() {
       this.onMountedDependOnLocalStateLoading()
     },
+    // A change of video tears down any in-flight transcript job and clears the
+    // overlay, so a job started for one video can never land on another.
+    videoId: function () {
+      this.teardownTranscriptJob()
+
+      this.transcriptVisible = false
+      this.transcriptState = 'idle'
+      this.transcriptSegments = []
+      this.transcriptWindow = { start: 0, end: 0 }
+      this.transcriptProgress = 0
+      this.transcriptErrorCode = ''
+    },
   },
   created: function () {
     this.videoId = this.$route.params.id
@@ -360,8 +412,220 @@ export default defineComponent({
   },
   mounted: function () {
     this.onMountedDependOnLocalStateLoading()
+
+    if (process.env.IS_ELECTRON) {
+      this.transcribeStatusUnsubscribe = window.ftElectron.onTranscribeStatus(this.handleTranscribeStatus)
+    }
+  },
+  unmounted: function () {
+    if (this.transcribeStatusUnsubscribe) {
+      this.transcribeStatusUnsubscribe()
+      this.transcribeStatusUnsubscribe = null
+    }
   },
   methods: {
+    handleTranscribe: async function () {
+      if (!this.transcribeEnabled) {
+        showToast(this.t('Video.Player.Transcribe.Not Configured'))
+        return
+      }
+
+      if (this.transcriptState === 'queued' || this.transcriptState === 'running') {
+        showToast(this.t('Video.Player.Transcribe.Busy'))
+        return
+      }
+
+      const currentTime = this.$refs.player.getCurrentTime()
+      const secondsBefore = this.$store.getters.getTranscriptionSecondsBefore
+      const secondsAfter = this.$store.getters.getTranscriptionSecondsAfter
+      const window_ = clampTranscriptWindow(currentTime, secondsBefore, secondsAfter, this.videoLengthSeconds)
+
+      // Capture this request's identity before the first await so a late
+      // rejection from a superseded request can be recognised and dropped.
+      const requestSeq = ++this.transcriptRequestSeq
+
+      this.transcriptCancelled = false
+      this.transcriptVisible = true
+      this.transcriptState = 'queued'
+      this.transcriptStage = 'queued'
+      this.transcriptProgress = 0
+      this.transcriptSegments = []
+      this.transcriptErrorCode = ''
+      this.transcriptCopied = false
+      this.transcriptWindow = window_
+
+      try {
+        const result = await window.ftElectron.transcribeStart({
+          videoId: this.videoId,
+          startSeconds: window_.start,
+          endSeconds: window_.end,
+          serviceUrl: this.transcriptionServiceUrl,
+          token: this.$store.getters.getTranscriptionToken
+        })
+
+        // A newer request has superseded this one: drop its result rather than
+        // letting it overwrite the current request's job id and state.
+        if (requestSeq !== this.transcriptRequestSeq) {
+          return
+        }
+
+        this.transcriptJobId = result.jobId
+        this.handleTranscribeResult(result.view)
+      } catch (error) {
+        // Drop the rejection entirely when a newer request has superseded this
+        // one: the `transcriptCancelled` flag was already reset for the new
+        // job and Electron delivers the rejection as a code-less Error, so
+        // treating it as a failure here would clobber the current job.
+        if (requestSeq !== this.transcriptRequestSeq) {
+          return
+        }
+
+        // A user cancel (or the video-change teardown) aborts the in-flight
+        // job and rejects here with E_CANCELLED. That is not an error state.
+        if (this.transcriptCancelled || error?.code === 'E_CANCELLED') {
+          return
+        }
+
+        // The rejection is an IPC Error with no `.code` (Electron replaces the
+        // thrown `{code, message}` object with a generic Error), so keep the
+        // code the TRANSCRIBE_STATUS event already captured when present and
+        // only fall back to a generic code when it is not.
+        this.transcriptState = 'error'
+        this.transcriptErrorCode = error?.code ?? (this.transcriptErrorCode || 'E_TRANSCRIBE_FAILED')
+      }
+    },
+
+    handleTranscribeStatus: function (view) {
+      const jobId = view?.jobId
+
+      // Ignore any event belonging to a job we deliberately tore down or that a
+      // newer request has superseded: it must not touch the current request's
+      // job id, state, or error code while another job is running.
+      if (jobId && this.transcriptStaleJobIds.includes(jobId)) {
+        return
+      }
+
+      // A deliberately cancelled job reports back as an error carrying
+      // E_CANCELLED; it must not surface as a failure.
+      if (this.transcriptCancelled || view?.error?.code === 'E_CANCELLED') {
+        return
+      }
+
+      // Only now is this event allowed to claim the current job id.
+      if (jobId) {
+        this.transcriptJobId = jobId
+      }
+
+      this.transcriptState = view.state
+      this.transcriptStage = view.stage
+      this.transcriptProgress = view.progress
+
+      // The final `done` status already carries the segments; capture them here
+      // so the overlay does not flash its empty state in the gap before the
+      // invoke resolves and handleTranscribeResult runs.
+      if (view.state === 'done' && Array.isArray(view.segments)) {
+        this.transcriptSegments = view.segments
+      }
+
+      // The main-process rejection is a plain `{code, message}` object the
+      // renderer may not see `.code` on, so the code carried on the status
+      // event is authoritative; clear it on every non-error update.
+      if (view.state === 'error') {
+        this.transcriptErrorCode = view.error?.code ?? 'E_TRANSCRIBE_FAILED'
+      } else {
+        this.transcriptErrorCode = ''
+      }
+    },
+
+    handleTranscribeResult: function (view) {
+      // Never let a result from a torn-down or superseded job land on the
+      // request that is actually current.
+      if (view?.jobId && this.transcriptStaleJobIds.includes(view.jobId)) {
+        return
+      }
+
+      if (view.state === 'done') {
+        this.transcriptSegments = view.segments
+        this.transcriptState = 'done'
+        this.copyTranscript()
+        return
+      }
+
+      if (this.transcriptCancelled || view.state === 'cancelled' || view.error?.code === 'E_CANCELLED') {
+        return
+      }
+
+      this.transcriptState = 'error'
+      this.transcriptErrorCode = view.error?.code ?? 'E_TRANSCRIBE_FAILED'
+    },
+
+    copyTranscript: async function () {
+      const text = formatTranscriptText(this.transcriptSegments)
+
+      // Nothing to copy (e.g. a 'done' job that produced zero segments): do
+      // not claim success for an empty transcript.
+      if (!text) {
+        return
+      }
+
+      try {
+        await navigator.clipboard.writeText(text)
+        this.transcriptCopied = true
+        showToast(this.t('Video.Player.Transcribe.Copied'))
+      } catch {
+        this.transcriptCopied = false
+        showToast(this.t('Video.Player.Transcribe.Copy Failed'), 5000)
+      }
+    },
+
+    handleTranscribeSeek: function (seconds) {
+      // The player is v-if-gated and unmounts on a player error, so the ref can
+      // be gone by the time a transcript line is clicked.
+      if (this.$refs.player) {
+        this.$refs.player.setCurrentTime(seconds)
+      }
+    },
+
+    cancelTranscribe: function () {
+      this.transcriptCancelled = true
+
+      // Remember this job's id so any late rejection or status event it emits
+      // can be recognised as belonging to a torn-down job.
+      if (this.transcriptJobId && !this.transcriptStaleJobIds.includes(this.transcriptJobId)) {
+        this.transcriptStaleJobIds.push(this.transcriptJobId)
+
+        // Bound the list: only the most recent handful of torn-down job ids is
+        // ever needed to recognise a late event. Clearing it on a new start
+        // would defeat the guard, so prune the oldest entries instead.
+        const overflow = this.transcriptStaleJobIds.length - TRANSCRIPT_STALE_JOB_ID_LIMIT
+        if (overflow > 0) {
+          this.transcriptStaleJobIds.splice(0, overflow)
+        }
+      }
+
+      window.ftElectron.transcribeCancel(this.transcriptJobId)
+      this.transcriptState = 'cancelled'
+      this.transcriptVisible = false
+    },
+
+    // shared teardown for the two places a running job must be stopped (a video
+    // change and leaving the watch view): reuse the cancel path rather than
+    // duplicating it.
+    teardownTranscriptJob: function () {
+      if (this.transcriptState === 'queued' || this.transcriptState === 'running') {
+        this.cancelTranscribe()
+      }
+    },
+
+    closeTranscript: function () {
+      if (this.transcriptState === 'queued' || this.transcriptState === 'running') {
+        this.cancelTranscribe()
+        return
+      }
+
+      this.transcriptVisible = false
+    },
+
     async reloadView() {
       await this.handleRouteChange()
 

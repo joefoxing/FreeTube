@@ -256,6 +256,69 @@
       </FtFlexBox>
       <br>
     </div>
+    <br>
+    <FtFlexBox class="screenshotFolderContainer">
+      <p class="screenshotFilenamePatternTitle">
+        {{ t('Settings.Player Settings.Transcript.Transcript') }}
+      </p>
+    </FtFlexBox>
+    <FtFlexBox class="screenshotFolderContainer">
+      <p class="screenshotFilenamePatternTitle">
+        {{ t('Settings.Player Settings.Transcript.Service URL') }}
+        <FtTooltip
+          class="selectTooltip"
+          position="bottom"
+          :tooltip="t('Settings.Player Settings.Transcript.Service URL Description')"
+        />
+      </p>
+      <FtInput
+        class="screenshotFilenamePatternInput"
+        :placeholder="t('Settings.Player Settings.Transcript.Service URL')"
+        :value="transcriptionServiceUrl"
+        :show-action-button="false"
+        :show-label="false"
+        @blur="updateTranscriptionServiceUrl"
+      />
+    </FtFlexBox>
+    <FtFlexBox class="screenshotFolderContainer">
+      <p class="screenshotFilenamePatternTitle">
+        {{ t('Settings.Player Settings.Transcript.Token') }}
+      </p>
+      <FtInput
+        class="screenshotFilenamePatternInput"
+        :placeholder="t('Settings.Player Settings.Transcript.Token')"
+        :value="transcriptionToken"
+        :show-action-button="false"
+        :show-label="false"
+        @blur="updateTranscriptionToken"
+      />
+    </FtFlexBox>
+    <FtFlexBox class="screenshotFolderContainer">
+      <p class="screenshotFilenamePatternTitle">
+        {{ t('Settings.Player Settings.Transcript.Seconds Before') }}
+      </p>
+      <FtInput
+        class="screenshotFilenamePatternInput"
+        :placeholder="t('Settings.Player Settings.Transcript.Seconds Before')"
+        :value="String(transcriptionSecondsBefore ?? 60)"
+        :show-action-button="false"
+        :show-label="false"
+        @blur="value => updateTranscriptionSecondsBefore(parseTranscriptionSeconds(value, 60))"
+      />
+    </FtFlexBox>
+    <FtFlexBox class="screenshotFolderContainer">
+      <p class="screenshotFilenamePatternTitle">
+        {{ t('Settings.Player Settings.Transcript.Seconds After') }}
+      </p>
+      <FtInput
+        class="screenshotFilenamePatternInput"
+        :placeholder="t('Settings.Player Settings.Transcript.Seconds After')"
+        :value="String(transcriptionSecondsAfter ?? 180)"
+        :show-action-button="false"
+        :show-label="false"
+        @blur="value => updateTranscriptionSecondsAfter(parseTranscriptionSeconds(value, 180))"
+      />
+    </FtFlexBox>
   </FtSettingsSection>
 </template>
 
@@ -693,6 +756,71 @@ async function getScreenshotFilenameExample(pattern) {
     screenshotFilenameExample.value = `❗ ${err.message}`
     return false
   }
+}
+
+/** @type {import('vue').ComputedRef<string>} */
+const transcriptionServiceUrl = computed(() => store.getters.getTranscriptionServiceUrl)
+
+/** @type {import('vue').ComputedRef<string>} */
+const transcriptionToken = computed(() => store.getters.getTranscriptionToken)
+
+/** @type {import('vue').ComputedRef<number>} */
+const transcriptionSecondsBefore = computed(() => store.getters.getTranscriptionSecondsBefore)
+
+/** @type {import('vue').ComputedRef<number>} */
+const transcriptionSecondsAfter = computed(() => store.getters.getTranscriptionSecondsAfter)
+
+/**
+ * @param {string} value
+ */
+function updateTranscriptionServiceUrl(value) {
+  store.dispatch('updateTranscriptionServiceUrl', value)
+}
+
+/**
+ * @param {string} value
+ */
+function updateTranscriptionToken(value) {
+  store.dispatch('updateTranscriptionToken', value)
+}
+
+/**
+ * Coerce a user-entered seconds value for the transcript offsets.
+ * An empty or non-numeric entry reverts to the given default; a finite number,
+ * including 0, is stored as-is; negative values are clamped to 0 so the result
+ * is always a valid, expressible offset.
+ * @param {string} value
+ * @param {number} defaultSeconds
+ * @returns {number}
+ */
+function parseTranscriptionSeconds(value, defaultSeconds) {
+  const trimmed = typeof value === 'string' ? value.trim() : value
+
+  if (trimmed === '' || trimmed === null || trimmed === undefined) {
+    return defaultSeconds
+  }
+
+  const parsed = Number(trimmed)
+
+  if (!Number.isFinite(parsed)) {
+    return defaultSeconds
+  }
+
+  return Math.max(0, parsed)
+}
+
+/**
+ * @param {number} value
+ */
+function updateTranscriptionSecondsBefore(value) {
+  store.dispatch('updateTranscriptionSecondsBefore', value)
+}
+
+/**
+ * @param {number} value
+ */
+function updateTranscriptionSecondsAfter(value) {
+  store.dispatch('updateTranscriptionSecondsAfter', value)
 }
 </script>
 

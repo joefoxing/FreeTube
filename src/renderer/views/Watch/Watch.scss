@@ -75,6 +75,8 @@
     .videoAreaMargin {
       margin-block: 0 16px;
       margin-inline: 0;
+      /* The transcript overlay is absolutely positioned within this box. */
+      position: relative;
     }
 
     .videoPlayer {
