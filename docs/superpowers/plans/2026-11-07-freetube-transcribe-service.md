@@ -24,7 +24,7 @@
 
 ---
 
-### Task A1: Project skeleton, config, and authenticated `/health`
+### Task 1 (A1): Project skeleton, config, and authenticated `/health`
 
 **Files:**
 - Create: `/home/joefox/developer/freetube-stt/pyproject.toml`
@@ -267,7 +267,7 @@ git commit -m "feat: transcribe service skeleton, config, and authenticated heal
 
 ---
 
-### Task A2: Command builders for yt-dlp and ffmpeg (pure, no I/O)
+### Task 2 (A2): Command builders for yt-dlp and ffmpeg (pure, no I/O)
 
 **Files:**
 - Create: `app/media.py`
@@ -458,7 +458,7 @@ git commit -m "feat: yt-dlp and ffmpeg command builders with real-ffmpeg trim te
 
 ---
 
-### Task A3: Whisper transcriber with absolute-timestamp offsetting
+### Task 3 (A3): Whisper transcriber with absolute-timestamp offsetting
 
 **Files:**
 - Create: `app/stt.py`
@@ -646,7 +646,7 @@ git commit -m "feat: whisper transcriber with absolute-timestamp offsetting"
 
 ---
 
-### Task A4: Job store, single worker, and the HTTP contract
+### Task 4 (A4): Job store, single worker, and the HTTP contract
 
 **Files:**
 - Create: `app/models.py`
@@ -1158,7 +1158,7 @@ git commit -m "feat: job queue with single worker and the jobs HTTP contract"
 
 ---
 
-### Task A5: The real pipeline (fetch → decode → transcribe)
+### Task 5 (A5): The real pipeline (fetch → decode → transcribe)
 
 **Files:**
 - Create: `app/pipeline.py`
@@ -1326,7 +1326,7 @@ git commit -m "feat: fetch/decode/transcribe pipeline with stage reporting and c
 
 ---
 
-### Task A6: Run it for real, against the tailnet
+### Task 6 (A6): Run it for real, against the tailnet
 
 **Files:**
 - Create: `deploy/env.example`

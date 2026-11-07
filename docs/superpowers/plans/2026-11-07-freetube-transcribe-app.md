@@ -25,7 +25,7 @@
 
 ---
 
-### Task B1: Channels, shortcut, icon, settings keys, strings
+### Task 1 (B1): Channels, shortcut, icon, settings keys, strings
 
 **Files:**
 - Modify: `src/constants.js` (IpcChannels block; `VIDEO_PLAYER.GENERAL` shortcut block; `PlayerIcons` block)
@@ -162,7 +162,7 @@ git commit -m "feat: transcribe ipc channels, shortcut, settings keys and string
 
 ---
 
-### Task B2: Window math, text formatting, error mapping (pure helpers)
+### Task 2 (B2): Window math, text formatting, error mapping (pure helpers)
 
 **Files:**
 - Create: `src/renderer/helpers/transcript.js`
@@ -336,7 +336,7 @@ git commit -m "feat: transcript window, formatting and error-mapping helpers"
 
 ---
 
-### Task B3: Main-process service client (no electron imports)
+### Task 3 (B3): Main-process service client (no electron imports)
 
 **Files:**
 - Create: `src/main/transcribeClient.js`
@@ -677,7 +677,7 @@ git commit -m "feat: electron-free transcribe service client with polling, timeo
 
 ---
 
-### Task B4: IPC wiring (main + preload)
+### Task 4 (B4): IPC wiring (main + preload)
 
 **Files:**
 - Create: `src/main/transcribeIpc.js`
@@ -841,7 +841,7 @@ git commit -m "feat: transcribe IPC channels in main and preload"
 
 ---
 
-### Task B5: The player button
+### Task 5 (B5): The player button
 
 **Files:**
 - Create: `src/renderer/components/ft-shaka-video-player/player-components/TranscribeButton.js`
@@ -1020,7 +1020,7 @@ git commit -m "feat: transcribe button in the player control bar with ctrl+t sho
 
 ---
 
-### Task B6: The overlay, the Watch wiring, and auto-copy
+### Task 6 (B6): The overlay, the Watch wiring, and auto-copy
 
 **Files:**
 - Create: `src/renderer/components/FtTranscript/FtTranscript.vue`
@@ -1340,7 +1340,7 @@ git commit -m "feat: transcript overlay, watch page wiring and clipboard auto-co
 
 ---
 
-### Task B7: Settings UI
+### Task 7 (B7): Settings UI
 
 **Files:**
 - Modify: `src/renderer/components/PlayerSettings/PlayerSettings.vue`
@@ -1434,7 +1434,7 @@ git commit -m "feat: transcription settings section"
 
 ---
 
-### Task B8: Full live verification against the real service
+### Task 8 (B8): Full live verification against the real service
 
 **Files:** none modified.
 
