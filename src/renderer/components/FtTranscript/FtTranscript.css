@@ -1,0 +1,106 @@
+/*
+  The transcript overlay mirrors the player's own overlay styling: it is
+  absolutely positioned inside the player container, right-anchored, with a
+  semi-transparent background and a scrollable body. `--primary-color` and the
+  `rgb(0 0 0 / x%)` backgrounds match `ft-shaka-video-player.css`.
+*/
+
+.transcriptOverlay {
+  position: absolute;
+  inset-block-start: 5%;
+  inset-inline-end: 2%;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  inline-size: min(420px, 45%);
+  max-block-size: 60%;
+  overflow: hidden;
+  border-radius: 8px;
+  background-color: rgb(0 0 0 / 80%);
+  color: #fff;
+  font-size: 0.9em;
+}
+
+.transcriptHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-block: 6px;
+  padding-inline: 10px;
+  border-block-end: 1px solid rgb(255 255 255 / 15%);
+}
+
+.transcriptTitle {
+  font-weight: bold;
+}
+
+.transcriptWindow {
+  margin-inline-start: auto;
+  font-size: 0.85em;
+  opacity: 0.8;
+  font-variant-numeric: tabular-nums;
+}
+
+.transcriptBusy,
+.transcriptError {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 16px;
+  text-align: center;
+}
+
+.transcriptStage {
+  margin: 0;
+}
+
+.transcriptBody {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  padding-block: 4px;
+}
+
+.transcriptEmpty {
+  padding: 16px;
+  text-align: center;
+  opacity: 0.8;
+}
+
+.transcriptLine {
+  display: flex;
+  gap: 8px;
+  inline-size: 100%;
+  padding-block: 6px;
+  padding-inline: 10px;
+  border: 0;
+  background-color: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+.transcriptLine:hover {
+  background-color: rgb(255 255 255 / 12%);
+}
+
+.transcriptLineTime {
+  flex: 0 0 auto;
+  color: var(--primary-color);
+  font-variant-numeric: tabular-nums;
+}
+
+.transcriptLineText {
+  flex: 1 1 auto;
+}
+
+.transcriptFooter {
+  display: flex;
+  justify-content: flex-end;
+  padding-block: 8px;
+  padding-inline: 10px;
+  border-block-start: 1px solid rgb(255 255 255 / 15%);
+}

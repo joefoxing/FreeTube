@@ -58,6 +58,23 @@
           @skip-to-next="handleSkipToNext"
           @skip-to-prev="handleSkipToPrev"
           @player-reload-requested="onSabrReloadRequested"
+          @transcribe="handleTranscribe"
+        />
+        <ft-transcript
+          :visible="transcriptVisible"
+          :state="transcriptState"
+          :stage="transcriptStage"
+          :progress="transcriptProgress"
+          :segments="transcriptSegments"
+          :error-code="transcriptErrorCode"
+          :window-start="transcriptWindow.start"
+          :window-end="transcriptWindow.end"
+          :copied="transcriptCopied"
+          @close="closeTranscript"
+          @cancel="cancelTranscribe"
+          @retry="handleTranscribe"
+          @copy="copyTranscript"
+          @seek="handleTranscribeSeek"
         />
         <div
           v-if="!isLoading && (isUpcoming || errorMessage)"

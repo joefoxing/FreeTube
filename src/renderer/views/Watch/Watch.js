@@ -13,6 +13,7 @@ import WatchVideoLiveChat from '../../components/WatchVideoLiveChat/WatchVideoLi
 import WatchVideoPlaylist from '../../components/WatchVideoPlaylist/WatchVideoPlaylist.vue'
 import WatchVideoRecommendations from '../../components/WatchVideoRecommendations/WatchVideoRecommendations.vue'
 import FtAgeRestricted from '../../components/FtAgeRestricted/FtAgeRestricted.vue'
+import FtTranscript from '../../components/FtTranscript/FtTranscript.vue'
 import { calculateColorLuminance } from '../../helpers/colors'
 import {
   buildChaptersVttFile,
@@ -43,6 +44,7 @@ import {
 } from '../../helpers/api/invidious'
 import { sortCaptions } from '../../helpers/player/utils'
 import { MANIFEST_TYPE_SABR } from '../../helpers/player/SabrManifestParser'
+import { clampTranscriptWindow, formatTranscriptText } from '../../helpers/transcript'
 import { useI18n } from 'vue-i18n'
 
 /**
@@ -71,6 +73,7 @@ export default defineComponent({
   components: {
     'ft-loader': FtLoader,
     'ft-shaka-video-player': FtShakaVideoPlayer,
+    'ft-transcript': FtTranscript,
     'watch-video-info': WatchVideoInfo,
     'watch-video-chapters': WatchVideoChapters,
     'watch-video-description': WatchVideoDescription,
@@ -183,6 +186,22 @@ export default defineComponent({
       /** @type {Date|null} */
       streamingDataExpiryDate: null,
       currentPlaybackRate: null,
+
+      transcriptVisible: false,
+      transcriptState: 'idle',
+      transcriptStage: 'queued',
+      transcriptProgress: 0,
+      transcriptSegments: [],
+      transcriptWindow: { start: 0, end: 0 },
+      transcriptErrorCode: '',
+      transcriptCopied: false,
+      transcriptJobId: null,
+      // True while a job is being torn down on purpose (user cancel or video
+      // change), so the in-flight rejection resolves as "cancelled" and never
+      // as an error.
+      transcriptCancelled: false,
+      /** @type {null | (() => void)} */
+      transcribeStatusUnsubscribe: null,
     }
   },
   computed: {
@@ -353,6 +372,17 @@ export default defineComponent({
     userPlaylistsReady() {
       this.onMountedDependOnLocalStateLoading()
     },
+    // A change of video tears down any in-flight transcript job and clears the
+    // overlay, so a job started for one video can never land on another.
+    videoId: function () {
+      if (this.transcriptState === 'queued' || this.transcriptState === 'running') {
+        this.cancelTranscribe()
+      }
+
+      this.transcriptVisible = false
+      this.transcriptState = 'idle'
+      this.transcriptSegments = []
+    },
   },
   created: function () {
     this.videoId = this.$route.params.id
@@ -366,8 +396,143 @@ export default defineComponent({
   },
   mounted: function () {
     this.onMountedDependOnLocalStateLoading()
+
+    if (process.env.IS_ELECTRON) {
+      this.transcribeStatusUnsubscribe = window.ftElectron.onTranscribeStatus(this.handleTranscribeStatus)
+    }
+  },
+  unmounted: function () {
+    if (this.transcribeStatusUnsubscribe) {
+      this.transcribeStatusUnsubscribe()
+      this.transcribeStatusUnsubscribe = null
+    }
   },
   methods: {
+    handleTranscribe: async function () {
+      if (!this.transcribeEnabled) {
+        showToast(this.t('Video.Player.Transcribe.Not Configured'))
+        return
+      }
+
+      if (this.transcriptState === 'queued' || this.transcriptState === 'running') {
+        showToast(this.t('Video.Player.Transcribe.Busy'))
+        return
+      }
+
+      const currentTime = this.$refs.player.getCurrentTime()
+      const secondsBefore = this.$store.getters.getTranscriptionSecondsBefore
+      const secondsAfter = this.$store.getters.getTranscriptionSecondsAfter
+      const window_ = clampTranscriptWindow(currentTime, secondsBefore, secondsAfter, this.videoLengthSeconds)
+
+      this.transcriptCancelled = false
+      this.transcriptVisible = true
+      this.transcriptState = 'queued'
+      this.transcriptStage = 'queued'
+      this.transcriptProgress = 0
+      this.transcriptSegments = []
+      this.transcriptErrorCode = ''
+      this.transcriptCopied = false
+      this.transcriptWindow = window_
+
+      try {
+        const result = await window.ftElectron.transcribeStart({
+          videoId: this.videoId,
+          startSeconds: window_.start,
+          endSeconds: window_.end,
+          serviceUrl: this.transcriptionServiceUrl,
+          token: this.$store.getters.getTranscriptionToken
+        })
+
+        this.transcriptJobId = result.jobId
+        this.handleTranscribeResult(result.view)
+      } catch (error) {
+        // A user cancel (or the video-change teardown) aborts the in-flight
+        // job and rejects here with E_CANCELLED. That is not an error state.
+        if (this.transcriptCancelled || error?.code === 'E_CANCELLED') {
+          return
+        }
+
+        // The rejection is an IPC Error with no `.code` (Electron replaces the
+        // thrown `{code, message}` object with a generic Error), so keep the
+        // code the TRANSCRIBE_STATUS event already captured when present and
+        // only fall back to a generic code when it is not.
+        this.transcriptState = 'error'
+        this.transcriptErrorCode = error?.code ?? (this.transcriptErrorCode || 'E_TRANSCRIBE_FAILED')
+      }
+    },
+
+    handleTranscribeStatus: function (view) {
+      if (view?.jobId) {
+        this.transcriptJobId = view.jobId
+      }
+
+      // A deliberately cancelled job reports back as an error carrying
+      // E_CANCELLED; it must not surface as a failure.
+      if (this.transcriptCancelled || view?.error?.code === 'E_CANCELLED') {
+        return
+      }
+
+      this.transcriptState = view.state
+      this.transcriptStage = view.stage
+      this.transcriptProgress = view.progress
+
+      // The main-process rejection is a plain `{code, message}` object the
+      // renderer may not see `.code` on, so the code carried on the status
+      // event is authoritative; clear it on every non-error update.
+      if (view.state === 'error') {
+        this.transcriptErrorCode = view.error?.code ?? 'E_TRANSCRIBE_FAILED'
+      } else {
+        this.transcriptErrorCode = ''
+      }
+    },
+
+    handleTranscribeResult: function (view) {
+      if (view.state === 'done') {
+        this.transcriptSegments = view.segments
+        this.transcriptState = 'done'
+        this.copyTranscript()
+        return
+      }
+
+      if (this.transcriptCancelled || view.state === 'cancelled' || view.error?.code === 'E_CANCELLED') {
+        return
+      }
+
+      this.transcriptState = 'error'
+      this.transcriptErrorCode = view.error?.code ?? 'E_TRANSCRIBE_FAILED'
+    },
+
+    copyTranscript: async function () {
+      try {
+        await navigator.clipboard.writeText(formatTranscriptText(this.transcriptSegments))
+        this.transcriptCopied = true
+        showToast(this.t('Video.Player.Transcribe.Copied'))
+      } catch {
+        this.transcriptCopied = false
+        showToast(this.t('Video.Player.Transcribe.Copy Failed'), 5000)
+      }
+    },
+
+    handleTranscribeSeek: function (seconds) {
+      this.$refs.player.setCurrentTime(seconds)
+    },
+
+    cancelTranscribe: function () {
+      this.transcriptCancelled = true
+      window.ftElectron.transcribeCancel(this.transcriptJobId)
+      this.transcriptState = 'cancelled'
+      this.transcriptVisible = false
+    },
+
+    closeTranscript: function () {
+      if (this.transcriptState === 'queued' || this.transcriptState === 'running') {
+        this.cancelTranscribe()
+        return
+      }
+
+      this.transcriptVisible = false
+    },
+
     async reloadView() {
       await this.handleRouteChange()
 
