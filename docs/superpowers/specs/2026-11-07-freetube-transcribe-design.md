@@ -316,3 +316,209 @@ Live verification I will actually perform and report:
 - Keyboard shortcut: yes — `ctrl+t` (plain `t` is THEATRE_MODE).
 - Auto-copy: yes — a finished transcript is copied to the clipboard
   automatically, with the overlay's Copy button as the manual re-copy.
+
+## 12. Verification run
+
+Date: 2026-11-07 (EST), branch `freetube-transcribe` @ `a89ac10b2`. Host: the
+live dev harness — Electron dev app under `xvfb` (CDP `127.0.0.1:9223`, renderer
+`http://localhost:9080`, viewport 1345×1040), driven through a small Node CDP
+driver (`/home/joefox/developer/freetube-devweb/cdp.mjs`, outside the repo), and
+the real service as the systemd user unit `freetube-transcribe.service`
+(`http://100.77.173.63:9099`). Video `aircAruvnKk`, ~18:39 long; whisper model
+`base`, yt-dlp 2026.10.26. The app token is never printed here; its length is
+quoted where relevant.
+
+The ten checks from the plan, each with the output that shows its result.
+
+**Check 1 — `/health` flips `modelLoaded` after a restart + one job. PASS.**
+`systemctl --user restart freetube-transcribe.service`, then immediately:
+
+```
+$ curl -s http://100.77.173.63:9099/health
+{"status":"ok","ytdlpVersion":"2026.10.26","whisperModel":"base","modelLoaded":false,"queueDepth":0}
+```
+
+one job later (the service-side fetch below ran first):
+
+```
+$ curl -s http://100.77.173.63:9099/health
+{"status":"ok","ytdlpVersion":"2026.10.26","whisperModel":"base","modelLoaded":true,"queueDepth":0}
+```
+
+**Check 2 — watch page, seek to `t≈300`, click `.transcribe-button`. PASS.**
+App-driven run (`node cdp.mjs --file probes/b8-e2e.js`):
+
+```
+{"route":"#/watch/aircAruvnKk","tAtSeek":302,"pausedAtClick":false,"buttonPresent":true,
+ "stagesSeen":["Fetching audio… · 5%","Preparing audio… · 45%","Transcribing… · 55%"],
+ "lineCount":62,"errorShown":null}
+```
+
+**Check 3 — the overlay's DOM text has >20 lines. PASS.** `"lineCount":62`.
+
+**Check 4 — an independently fetched service transcript for the same window
+opens with the same words. PASS.** Independent service fetch
+(`python3 probes/b6-window-fetch.py 241 481`, window = the app's actual
+`[t−60, t+180]`):
+
+```
+service window 241..481: state=done segments=45
+  [241.0-246.2] image corresponds with a given digit. There's also a couple layers in between called the
+  [246.2-251.3] hidden layers, which for the time being should just be a giant question mark, for how
+  ...
+  [475.7-481.5] able to detect edges and patterns like this would be really useful for other image recognition tasks.
+```
+
+The overlay's own lines (read from the live DOM):
+
+```
+first: "4:01image corresponds with a given digit."
+second: "4:04There's also a couple layers in between called the hidden layers which for the time being"
+last: "7:58really useful for other image recognition tasks."
+```
+
+Same opening words, same content as the service transcript for the same window.
+
+**Check 5 — every overlay timestamp falls inside `[t−60, t+180]`. PASS.** The
+overlay reported its window as `"4:01 – 8:02"` (= 241..482), i.e. `[t−60, t+180]`
+for `t≈301`; the extracted stamps run `{"minStamp":241,"maxStamp":478}` — all
+inside.
+
+**Check 6 — playback continued throughout (`paused === false`, `currentTime`
+advanced). PASS.** Sampled every 2 s across the whole job:
+`"anyPausedDuringJob":false`, `"tFirst":304,"tLast":328,"tDelta":24` (13 samples,
+all `paused:false`). The ctrl+t run repeated it: samples 612→632, all
+`paused:false`.
+
+**Check 7 — clipboard holds the transcript. PASS (manual Copy path).**
+Attempted the strong path first: a real CDP mouse click
+(`Input.dispatchMouseEvent` move+press+release) at the centre of the overlay's
+"Copy Transcript" button (rect centre `x=1199,y=505`), which gives transient user
+activation, then read the OS clipboard from outside the app:
+
+```
+$ DISPLAY=:99 XAUTHORITY=… xclip -selection clipboard -o
+[4:01] image corresponds with a given digit.
+[4:04] There's also a couple layers in between called the hidden layers which for the time being
+[4:09] should just be a giant question mark for how on ear…
+```
+
+The clipboard (4497 bytes) is an exact match for the overlay's own plain-text
+form (also 4497 bytes; `exact match (ignoring trailing newline): True`), and the
+copy button label changed to `Transcript copied to clipboard`. See the
+focus-dependence limitation below — the *auto*-copy on completion behaves
+differently in this harness.
+
+**Check 8 — a real `ctrl+t` drives the identical flow. PASS.** With the overlay
+closed and the video sought to `t≈606`, a real key event was dispatched
+(`Input.dispatchKeyEvent` `rawKeyDown`/`keyUp`, `modifiers:2`, `key:"t"`,
+`code:"KeyT"`), not a synthetic JS event:
+
+```
+{"lineCount":42,"windowLabel":"9:06 – 13:07",
+ "first":"9:06to potentially capture this pattern, or any other pixel pattern, or the pattern that …",
+ "last":"13:03I personally find this satisfying rather than just treating the network as a total…",
+ "anyPaused":false,"tFirst":612,"tLast":632}
+```
+
+Same overlay, same stages, playback untouched.
+
+**Check 9 — a second click while busy is refused and starts no second job.
+PASS.** Two `click()`s on `.transcribe-button` with the first job still
+running: `"stateDuringJob":"busy"`, and the only toast seen was
+`["Already transcribing this video"]`. The service's own request log confirms
+only one job was created for the two clicks — `POST /jobs` count went 4 → 5
+across the pair:
+
+```
+POST /jobs before check9: 4
+POST /jobs after check9: 5
+```
+
+(The guard is in `Watch.js`'s `handleTranscribe`, before the IPC call, so the
+second click never reaches main or the service.)
+
+**Check 10 — a bogus token yields the unauthorized message, not a crash. PASS.**
+The store token was temporarily set to a 14-char bogus value, transcribe was
+clicked, and the overlay showed:
+
+```
+{"realTokenLen":43,"bogusTokenLen":14,
+ "errorText":"The transcription service rejected the token",
+ "stillAlive":true,"bodyLen":5751,
+ "restoredTokenLen":43,"restoredMatches":true}
+```
+
+The service logged the rejection: `POST /jobs HTTP/1.1" 401 Unauthorized`. The
+real token (43 chars) was restored and confirmed equal afterwards.
+
+**Automated suites.**
+
+```
+$ cd /home/joefox/developer/freetube-stt && uv run pytest tests -q
+35 passed, 1 deselected, 30 warnings in 0.85s
+```
+
+```
+$ cd /home/joefox/developer/freetube && node --test "tests/**/*.test.cjs"
+# tests 27
+# pass 27
+# fail 0
+```
+
+**Lint — does NOT pass; it cannot run on this checkout.** The plan's list says
+lint is clean; the truth is that both `lint` sub-commands abort with
+`ERR_REQUIRE_CYCLE_MODULE` before linting anything (pre-existing and reproducible
+on a clean tree — the failure is in the toolchain, not the diff):
+
+```
+$ pnpm run lint
+. lint-style: Error [ERR_REQUIRE_CYCLE_MODULE]: Cannot require() ES Module
+  /home/joefox/developer/freetube/stylelint.config.mjs in a cycle.
+  (from cosmiconfig/dist/loaders.js)
+. lint-style: Failed
+```
+
+```
+$ pnpm run eslint-lint
+ESLint: 10.14.0
+Error [ERR_REQUIRE_CYCLE_MODULE]: Cannot require() ES Module
+  …/jsonc-eslint-parser/lib/index.mjs in a cycle.
+  (from @intlify/eslint-plugin-vue-i18n/dist/configs/flat/base.js)
+```
+
+The feature diff itself was not able to be lint-checked by tooling; nothing in
+this run changed it.
+
+**Known limitations / not verified here.**
+
+- **Clipboard auto-copy is focus-dependent.** The *automatic* copy that runs on
+  completion fails in this harness, which has no input-focused window: the async
+  `navigator.clipboard.writeText` is refused, so on completion the app raises the
+  toast `Transcript is shown, but copying to the clipboard failed` and leaves the
+  copy button reading `Copy Transcript` (`transcriptCopied` stays false). The
+  manual Copy button works when clicked with a real event (check 7). The write
+  path is known-good when the window really is focused: an earlier focused run
+  left app-formatted `[m:ss] text` on the OS clipboard.
+- **darwin `cmd+t` is inspection-only.** The keyboard handler branches on
+  `process.platform` (`(process.platform !== 'darwin' && event.ctrlKey) ||
+  (process.platform === 'darwin' && event.metaKey)`); this is a Linux host, so
+  the Meta-key path cannot be exercised here.
+- **Overlay anchor overhang on a wide (1920 px) window is unobservable here.**
+  The harness window is 1345 px (`innerWidth=1345`) and will not exceed ~1345,
+  so whether the overlay anchor can overhang the video at full 1920 width could
+  not be checked.
+- **`ctrl+t` is absent from the `?` keyboard-shortcut help modal.** By
+  inspection, `FtKeyboardShortcutPrompt.vue`'s shortcut list
+  (`localizedShortcutNameToShortcutsMappings`) has no TRANSCRIBE row — it runs
+  `Take Screenshot`, `Stats`, then straight to the playback shortcuts. The key
+  works; it is just undocumented in that modal.
+- **Settings fields commit on blur only.** The four Transcribe fields use
+  `@blur` handlers (`updateTranscriptionServiceUrl`, `…Token`,
+  `…SecondsBefore`, `…SecondsAfter`); `FtInput`'s `handleKeyDown` does not commit
+  on `Enter`, consistent with the repo's other URL fields. Driving the fields
+  and blurring updates the store (URL → then restored; `seconds-after` 205 → then
+  restored to 180); `Enter` alone would not.
+- **The web build was not run here.** The button/overlay are gated on
+  `process.env.IS_ELECTRON` (inspection only); the check that they are absent in
+  `pnpm run dev:web` was not performed in this harness.
