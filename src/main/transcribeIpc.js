@@ -39,7 +39,18 @@ export function registerTranscribeIpc({ ipcMain, client = createTranscribeClient
     activeJobs.set(reservationId, controller)
     let jobId = null
 
+    // Every status event must be gated on the job still being the live entry:
+    // a job that was cancelled or otherwise removed from activeJobs may keep
+    // running its async frame, but it must never reach the renderer. The map is
+    // keyed by the placeholder reservationId until startJob resolves and by the
+    // real jobId afterwards, so liveness is checked against whichever key
+    // applies at this moment — matching the keys used by the cancel handler and
+    // the finally below.
     const send = view => {
+      const liveKey = jobId ?? reservationId
+      if (!activeJobs.has(liveKey)) {
+        return
+      }
       if (!event.sender.isDestroyed()) {
         event.sender.send(IpcChannels.TRANSCRIBE_STATUS, view)
       }

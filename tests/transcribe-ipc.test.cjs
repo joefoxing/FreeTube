@@ -283,3 +283,67 @@ test('TRANSCRIBE_START without a service URL rejects with E_WINDOW_INVALID', asy
     error => error.code === 'E_WINDOW_INVALID'
   )
 })
+
+// B-style RED check: with the un-gated `send` (main's pre-fix code), the late
+// poll frame below still reaches the sender — the whole point of gating on the
+// live activeJobs entry. Cancel arrives with a null id, which is exactly the
+// case the renderer's own stale-id guard cannot cover: handleTranscribe never
+// learned a job id, so cancelTranscribe records nothing and a late status event
+// would claim the current job. Main is the only place left that can suppress it.
+test('a cancelled job delivers no further status events, even when cancel arrives before the renderer learned its id', async () => {
+  const { registerTranscribeIpc } = await loadHandler()
+  const { IpcChannels } = await loadChannels()
+
+  const sent = []
+  const ipcMain = makeIpcMain()
+
+  // Captured so the test can deliver it on demand: models the next poll frame
+  // of a job that was still polling when it got cancelled — the frame resolves
+  // and reaches `onUpdate` after main has already torn the job down. (The real
+  // client only ever calls onUpdate after an awaited poll, never synchronously
+  // from inside the abort listener.)
+  let emitLatePollFrame
+
+  const client = {
+    startJob: async () => ({ jobId: 'j1' }),
+    waitForJob: ({ onUpdate, signal }) => new Promise((_resolve, reject) => {
+      onUpdate({ jobId: 'j1', state: 'running', stage: 'fetching', progress: 0.5 })
+      emitLatePollFrame = () =>
+        onUpdate({ jobId: 'j1', state: 'running', stage: 'transcribing', progress: 0.9 })
+      signal.addEventListener('abort', () => {
+        const error = new Error('cancelled')
+        error.code = 'E_CANCELLED'
+        reject(error)
+      })
+    })
+  }
+
+  registerTranscribeIpc({ ipcMain, client })
+
+  const pending = ipcMain.handlers.get(IpcChannels.TRANSCRIBE_START)({ sender: makeSender(sent) }, payload)
+  pending.catch(() => {})
+
+  // Let startJob resolve so the job is the live activeJobs entry and its running
+  // frame is legitimately delivered.
+  await new Promise(resolve => setImmediate(resolve))
+
+  assert.equal(sent.length, 1, 'the live running status is delivered')
+  assert.equal(sent[0].view.state, 'running')
+
+  const sentBeforeCancel = sent.length
+
+  // Cancel with a null id: the renderer never learned the id, so its guard is a
+  // no-op here. Main must still stop the old job's events.
+  ipcMain.listeners.get(IpcChannels.TRANSCRIBE_CANCEL)({}, null)
+
+  await assert.rejects(pending, error => error.code === 'E_CANCELLED')
+
+  // A poll frame from the now-torn-down job arrives; it must not be delivered.
+  emitLatePollFrame()
+
+  assert.equal(sent.length, sentBeforeCancel, 'a cancelled job must deliver no further status event')
+  assert.ok(
+    sent.every(entry => entry.view?.jobId !== 'j1' || entry.view.state === 'running'),
+    'no post-cancel status event may carry the torn-down job id'
+  )
+})

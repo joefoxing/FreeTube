@@ -233,7 +233,22 @@ Weblate handles the rest.
   failed and a Retry button; partial results are discarded.
 - Busy → second click while a job runs is a no-op with a toast ("already
   transcribing"), and switching videos cancels the in-flight job.
-- Long windows are clamped to `FT_MAX_WINDOW_SECONDS` with a toast saying so.
+- Window clamping (DELIVERED behaviour, see the deviation below): the renderer's
+  `clampTranscriptWindow` clamps the requested window only to the **video's own
+  duration** (`[0, duration]`); it does not clamp to the service's
+  `FT_MAX_WINDOW_SECONDS` and it shows **no toast**. When the user-configured
+  window is longer than the service's maximum, the service rejects the job with
+  its `E_WINDOW_INVALID` error and the overlay surfaces that error's message —
+  the request is refused, not silently shortened.
+  - **Deviation from the original promise.** This section (and plan step B1)
+    originally promised "long windows are clamped to `FT_MAX_WINDOW_SECONDS`
+    with a toast saying so." That toast was **not built**, and the window is not
+    clamped to the service limit on the client. The delivered behaviour is the
+    refusal described above. Recording this rather than silently dropping the
+    promise; building the toast is future work, not part of this change.
+- A `done` status carries the finished `segments`, which the renderer captures
+  directly from the status event so the overlay never flashes its empty state in
+  the gap before the invoke resolves.
 - The service never returns a partially-filled transcript as success; a failure
   is a failure.
 

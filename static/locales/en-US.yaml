@@ -989,7 +989,6 @@ Video:
       Cancel: Cancel
       Empty: No speech found in this section
       Busy: Already transcribing this video
-      Window Clamped: Requested window was shortened to the service limit
       Not Configured: Set a transcription service URL in Settings → Player Settings
       Failed: Transcription failed
       ServiceUnreachable: Transcription service is not reachable
@@ -1141,7 +1140,6 @@ Tooltips:
       the playback rate. Press and hold the Control key (Command Key on Mac) and left click the mouse
       to quickly return to the default playback rate (1x unless it has been changed in the settings).
     Skip by Scrolling Over Video Player: Use the scroll wheel to skip through the video, MPV style.
-    Service URL: Base URL of the transcription service, e.g. http://100.77.173.63:9099
   External Player Settings:
     External Player: Choosing an external player will display an icon, for opening the
       video (playlist if supported) in the external player, on the thumbnail. Warning, Invidious settings do not affect external players.

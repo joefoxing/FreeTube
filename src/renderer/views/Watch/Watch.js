@@ -67,6 +67,9 @@ const UNAVAILABLE_VIDEO_THUMBNAILS = {
   light: 'https://www.youtube.com/img/desktop/unavailable/unavailable_video.png',
   dark: 'https://www.youtube.com/img/desktop/unavailable/unavailable_video_dark_theme.png'
 }
+// How many torn-down job ids the renderer remembers to recognise a late status
+// event. Bounded so the list cannot grow without limit over a long session.
+const TRANSCRIPT_STALE_JOB_ID_LIMIT = 5
 
 export default defineComponent({
   name: 'Watch',
@@ -85,6 +88,10 @@ export default defineComponent({
   },
   beforeRouteLeave: async function (to, from, next) {
     this.handleRouteChange()
+    // Leaving the watch view tears down any in-flight transcript job through
+    // the same path the videoId watcher uses; this does not depend on the
+    // videoId watcher firing during reloadView.
+    this.teardownTranscriptJob()
     window.removeEventListener('beforeunload', this.handleWatchProgressAutoSave)
     document.removeEventListener('keydown', this.resetAutoplayInterruptionTimeout)
     document.removeEventListener('click', this.resetAutoplayInterruptionTimeout)
@@ -383,13 +390,14 @@ export default defineComponent({
     // A change of video tears down any in-flight transcript job and clears the
     // overlay, so a job started for one video can never land on another.
     videoId: function () {
-      if (this.transcriptState === 'queued' || this.transcriptState === 'running') {
-        this.cancelTranscribe()
-      }
+      this.teardownTranscriptJob()
 
       this.transcriptVisible = false
       this.transcriptState = 'idle'
       this.transcriptSegments = []
+      this.transcriptWindow = { start: 0, end: 0 }
+      this.transcriptProgress = 0
+      this.transcriptErrorCode = ''
     },
   },
   created: function () {
@@ -512,6 +520,13 @@ export default defineComponent({
       this.transcriptStage = view.stage
       this.transcriptProgress = view.progress
 
+      // The final `done` status already carries the segments; capture them here
+      // so the overlay does not flash its empty state in the gap before the
+      // invoke resolves and handleTranscribeResult runs.
+      if (view.state === 'done' && Array.isArray(view.segments)) {
+        this.transcriptSegments = view.segments
+      }
+
       // The main-process rejection is a plain `{code, message}` object the
       // renderer may not see `.code` on, so the code carried on the status
       // event is authoritative; clear it on every non-error update.
@@ -578,11 +593,28 @@ export default defineComponent({
       // can be recognised as belonging to a torn-down job.
       if (this.transcriptJobId && !this.transcriptStaleJobIds.includes(this.transcriptJobId)) {
         this.transcriptStaleJobIds.push(this.transcriptJobId)
+
+        // Bound the list: only the most recent handful of torn-down job ids is
+        // ever needed to recognise a late event. Clearing it on a new start
+        // would defeat the guard, so prune the oldest entries instead.
+        const overflow = this.transcriptStaleJobIds.length - TRANSCRIPT_STALE_JOB_ID_LIMIT
+        if (overflow > 0) {
+          this.transcriptStaleJobIds.splice(0, overflow)
+        }
       }
 
       window.ftElectron.transcribeCancel(this.transcriptJobId)
       this.transcriptState = 'cancelled'
       this.transcriptVisible = false
+    },
+
+    // shared teardown for the two places a running job must be stopped (a video
+    // change and leaving the watch view): reuse the cancel path rather than
+    // duplicating it.
+    teardownTranscriptJob: function () {
+      if (this.transcriptState === 'queued' || this.transcriptState === 'running') {
+        this.cancelTranscribe()
+      }
     },
 
     closeTranscript: function () {
