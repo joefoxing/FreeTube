@@ -189,14 +189,28 @@ settings state.
   modelled on `ScreenshotButton.js`: a control-bar + overflow-menu button that
   dispatches a `transcribe` CustomEvent. Registered in
   `ft-shaka-video-player.js` next to `registerScreenshotButton()`, with
-  `'transcribe'` added to `emits`, and a keyboard shortcut constant in
-  `constants.js` (`VIDEO_PLAYER.GENERAL.TRANSCRIBE`) — the key must be checked
-  against the existing map for collisions. New `PlayerIcons` entry for the glyph.
+  `'transcribe'` added to `emits`. The button label uses
+  `addKeyboardShortcutToActionTitle(i18n.global.t(...), KeyboardShortcuts.VIDEO_PLAYER.GENERAL.TRANSCRIBE)`
+  exactly as the screenshot button does, and the shortcut is wired into
+  `keyboardShortcutHandler`.
+  - Keyboard shortcut (decided): `TRANSCRIBE: 'ctrl+t'` in
+    `VIDEO_PLAYER.GENERAL`. Plain `t` is already THEATRE_MODE, so `ctrl+t` is the
+    mnemonic non-colliding choice.
+  - Icon (decided): a new `PlayerIcons` entry holding the `d` attribute of the
+    Material Symbols `transcribe` glyph — these custom player components use
+    Material Symbols, not FontAwesome
+    (`https://fonts.gstatic.com/s/i/short-term/release/materialsymbolsrounded/transcribe/default/24px.svg`),
+    per the note at the top of the `PlayerIcons` block in `constants.js`.
 - `components/FtTranscript/FtTranscript.vue` — overlay anchored inside the player
   container: loading (spinner + stage text + cancel), done (scrollable
   timestamped lines, click a line to seek, Copy, Close), error (message +
   Retry). Rendered from `Watch.vue` inside the existing player wrapper;
   `Watch.js` owns the state and subscribes to status events.
+- On completion the plain-text transcript is copied to the clipboard
+  automatically (decided), using the same Clipboard API pattern the player
+  already uses for screenshots, with a toast confirming it; the Copy button
+  re-copies. Clipboard failure is non-fatal — the overlay still shows the text
+  and says the copy failed.
 - Desktop-only: the button and overlay are hidden when `process.env.IS_ELECTRON`
   is false (the web build has no IPC layer).
 
@@ -249,6 +263,10 @@ Live verification I will actually perform and report:
    match, and timestamps must map into `[t − 60, t + 180]`.
 4. Confirm playback was not interrupted (player still playing, currentTime
    advanced) and that a second click while busy is refused.
+5. Press `ctrl+t` in the player and confirm it drives the identical flow.
+6. After completion, assert the clipboard actually holds the transcript text
+   (`navigator.clipboard.readText()` in the page, else Electron's
+   `clipboard.readText()`), and that the confirmation toast appeared.
 
 ## 8. Deployment / ops
 
@@ -287,9 +305,8 @@ Live verification I will actually perform and report:
    settings section, i18n strings.
 4. Live verification per section 7, then lint, then hand over for review.
 
-## 11. Open questions for the reviewer
+## 11. Decisions taken from review
 
-- Keyboard shortcut for the new player action: pick an unused key (e.g. `t`) or
-  leave it shortcut-less?
-- Should a finished transcript be saved anywhere (clipboard only in this design),
-  or auto-copied to the clipboard on completion?
+- Keyboard shortcut: yes — `ctrl+t` (plain `t` is THEATRE_MODE).
+- Auto-copy: yes — a finished transcript is copied to the clipboard
+  automatically, with the overlay's Copy button as the manual re-copy.
