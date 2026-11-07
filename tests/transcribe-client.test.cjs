@@ -180,3 +180,62 @@ test('waitForJob stops on abort while a request is in flight', async () => {
 
   server.close()
 })
+
+// The service may spend a long time fetching before it reports `transcribing`:
+// its own allowance is 300s plus a 120s decode, and a throttled connection makes
+// a fetch of a few minutes genuinely take ~124s. The client used to abandon that
+// job at 120s with E_TIMEOUT while the service was still working on it and then
+// finished it successfully.
+test('a slow fetch is outwaited while the service is still fetching, not abandoned', async () => {
+  const started = 0
+  const { server, url } = await startStub((req, res) => {
+    if (Date.now() - started >= 400000) {
+      json(res, 200, { jobId: 'j1', state: 'done', stage: 'transcribing', progress: 1, language: 'vi', segments: [{ start: 1, end: 2, text: 'ok' }] })
+    } else {
+      json(res, 200, { jobId: 'j1', state: 'running', stage: 'fetching', progress: 0.05 })
+    }
+  })
+
+  // The client reads only Date.now() for elapsed time and the injected sleep,
+  // so a driven clock makes a 400-second fetch take no real time.
+  const realNow = Date.now
+  let clock = 0
+  Date.now = () => clock
+
+  try {
+    const { createTranscribeClient } = await load()
+    const client = createTranscribeClient({ sleep: async () => { clock += 1000 } })
+
+    const view = await client.waitForJob({ serviceUrl: url, token: 't', jobId: 'j1' })
+
+    assert.equal(view.state, 'done')
+    assert.equal(view.segments[0].text, 'ok')
+    assert.ok(clock >= 400000, `expected the client to wait past 400s, it waited ${clock}ms`)
+  } finally {
+    Date.now = realNow
+    server.close()
+  }
+})
+
+// ...and the budget still bounds the wait: a job that never leaves `fetching` is
+// given up on, so the new default is asserted here rather than merely written down.
+test('the default budget still gives up on a job that never leaves fetching', async () => {
+  const { server, url } = await startStub((req, res) => json(res, 200, { jobId: 'j1', state: 'running', stage: 'fetching', progress: 0.05 }))
+
+  const realNow = Date.now
+  let clock = 0
+  Date.now = () => clock
+
+  try {
+    const { createTranscribeClient } = await load()
+    const client = createTranscribeClient({ sleep: async () => { clock += 1000 } })
+
+    await assert.rejects(
+      () => client.waitForJob({ serviceUrl: url, token: 't', jobId: 'j1' }),
+      error => error.code === 'E_TIMEOUT' && error.message.includes('480s')
+    )
+  } finally {
+    Date.now = realNow
+    server.close()
+  }
+})
