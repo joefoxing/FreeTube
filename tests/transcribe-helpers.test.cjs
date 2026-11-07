@@ -78,3 +78,73 @@ test('service errors map to i18n keys with a fallback', async () => {
   assert.equal(mapTranscribeError('E_SERVICE_UNREACHABLE'), 'Video.Player.Transcribe.ServiceUnreachable')
   assert.equal(mapTranscribeError('E_SOMETHING_NEW'), 'Video.Player.Transcribe.Failed')
 })
+
+test('copying prefers the async clipboard API when the origin has one', async () => {
+  const { copyTextToClipboard } = await load()
+
+  const written = []
+  const clipboard = { writeText: async text => written.push(text) }
+
+  assert.equal(await copyTextToClipboard('hello', { clipboard }), true)
+  assert.deepEqual(written, ['hello'])
+})
+
+test('copying falls back to execCommand where navigator.clipboard does not exist', async () => {
+  const { copyTextToClipboard } = await load()
+
+  // The tailnet preview over plain HTTP: navigator.clipboard is undefined there
+  // because the origin is not a secure context.
+  const calls = []
+  const documentRef = {
+    body: {
+      appendChild: node => {
+        calls.push(['append', node.value])
+        node.parentNode = documentRef.body
+      },
+      removeChild: () => calls.push(['remove'])
+    },
+    createElement: () => ({ style: {}, setAttribute: () => {}, select: () => calls.push(['select']), parentNode: null }),
+    execCommand: command => {
+      calls.push(['exec', command])
+      return true
+    }
+  }
+
+  assert.equal(await copyTextToClipboard('hello', { clipboard: undefined, documentRef }), true)
+  // ...and the scratch textarea is taken back out of the document afterwards.
+  assert.deepEqual(calls, [['append', 'hello'], ['select'], ['exec', 'copy'], ['remove']])
+})
+
+test('a refused execCommand is reported as a failure, not as success', async () => {
+  const { copyTextToClipboard } = await load()
+
+  const documentRef = {
+    body: { appendChild: () => {} },
+    createElement: () => ({ style: {}, setAttribute: () => {}, select: () => {}, parentNode: null }),
+    execCommand: () => false
+  }
+
+  assert.equal(await copyTextToClipboard('hello', { clipboard: undefined, documentRef }), false)
+})
+
+test('a rejected async write still tries the legacy path', async () => {
+  const { copyTextToClipboard } = await load()
+
+  let legacyUsed = false
+  const clipboard = {
+    writeText: async () => {
+      throw new Error('permission denied')
+    }
+  }
+  const documentRef = {
+    body: { appendChild: () => {} },
+    createElement: () => ({ style: {}, setAttribute: () => {}, select: () => {}, parentNode: null }),
+    execCommand: () => {
+      legacyUsed = true
+      return true
+    }
+  }
+
+  assert.equal(await copyTextToClipboard('hello', { clipboard, documentRef }), true)
+  assert.equal(legacyUsed, true)
+})

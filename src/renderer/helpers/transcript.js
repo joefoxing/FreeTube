@@ -67,6 +67,80 @@ export function formatTranscriptText(segments) {
     .join('\n')
 }
 
+/**
+ * Copy text using whichever clipboard mechanism this origin actually has.
+ *
+ * A secure context (Electron, or the HTTPS preview) provides
+ * `navigator.clipboard`. A plain-HTTP origin — the tailnet preview served over
+ * `http://…:9080` — does NOT: the async clipboard API is undefined outside a
+ * secure context, so an unconditional `navigator.clipboard.writeText` throws and
+ * the copy reports failure even though the browser could have done it. The
+ * legacy selection + execCommand path still works on those origins when there is
+ * a user gesture behind the call (the Copy Transcript button), so it backs up
+ * the async API instead of giving up.
+ *
+ * The clipboard and document are injectable so this stays testable from plain
+ * Node, where neither exists.
+ *
+ * @param {string} text
+ * @param {{ clipboard?: object|undefined, documentRef?: object|undefined }} [deps]
+ * @returns {Promise<boolean>} whether the text was handed to the clipboard
+ */
+export async function copyTextToClipboard(text, deps = {}) {
+  const clipboard = 'clipboard' in deps ? deps.clipboard : globalThis.navigator?.clipboard
+  const documentRef = 'documentRef' in deps ? deps.documentRef : globalThis.document
+
+  if (clipboard?.writeText !== undefined) {
+    try {
+      await clipboard.writeText(text)
+      return true
+    } catch (error) {
+      // A denied permission is not necessarily the end of the road: try the
+      // legacy path before reporting a failure.
+      console.error('Async clipboard write failed, trying the legacy path', error)
+    }
+  }
+
+  return legacyCopyText(text, documentRef)
+}
+
+/**
+ * Selection + `document.execCommand('copy')`. Deprecated but still the only
+ * route on an insecure origin, where the async clipboard API does not exist.
+ *
+ * @param {string} text
+ * @param {object|undefined} documentRef
+ * @returns {boolean}
+ */
+function legacyCopyText(text, documentRef) {
+  if (documentRef === undefined || typeof documentRef.execCommand !== 'function') {
+    return false
+  }
+
+  let area = null
+
+  try {
+    area = documentRef.createElement('textarea')
+    area.value = text
+    area.setAttribute('readonly', '')
+    // Off-screen rather than `display: none`, which cannot be selected.
+    area.style.position = 'fixed'
+    area.style.top = '-1000px'
+    area.style.opacity = '0'
+    documentRef.body.appendChild(area)
+    area.select()
+
+    return documentRef.execCommand('copy') === true
+  } catch (error) {
+    console.error('Legacy clipboard copy failed', error)
+    return false
+  } finally {
+    if (area !== null && area.parentNode !== null) {
+      area.parentNode.removeChild(area)
+    }
+  }
+}
+
 const ERROR_KEYS = {
   E_SERVICE_UNREACHABLE: 'Video.Player.Transcribe.ServiceUnreachable',
   E_UNAUTHORIZED: 'Video.Player.Transcribe.Unauthorized',

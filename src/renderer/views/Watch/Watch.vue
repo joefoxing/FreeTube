@@ -73,7 +73,7 @@
           @close="closeTranscript"
           @cancel="cancelTranscribe"
           @retry="handleTranscribe"
-          @copy="copyTranscript"
+          @copy="copyTranscript()"
           @seek="handleTranscribeSeek"
         />
         <div

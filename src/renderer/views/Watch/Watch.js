@@ -44,7 +44,7 @@ import {
 } from '../../helpers/api/invidious'
 import { sortCaptions } from '../../helpers/player/utils'
 import { MANIFEST_TYPE_SABR } from '../../helpers/player/SabrManifestParser'
-import { clampTranscriptWindow, formatTranscriptText } from '../../helpers/transcript'
+import { clampTranscriptWindow, copyTextToClipboard, formatTranscriptText } from '../../helpers/transcript'
 import { start as transcribeStart, cancel as transcribeCancel, onStatus as onTranscribeStatus } from '../../transcribe/backend/index.js'
 import { useI18n } from 'vue-i18n'
 
@@ -546,7 +546,7 @@ export default defineComponent({
       if (view.state === 'done') {
         this.transcriptSegments = view.segments
         this.transcriptState = 'done'
-        this.copyTranscript()
+        this.copyTranscript(true)
         return
       }
 
@@ -558,7 +558,7 @@ export default defineComponent({
       this.transcriptErrorCode = view.error?.code ?? 'E_TRANSCRIBE_FAILED'
     },
 
-    copyTranscript: async function () {
+    copyTranscript: async function (silent = false) {
       const text = formatTranscriptText(this.transcriptSegments)
 
       // Nothing to copy (e.g. a 'done' job that produced zero segments): do
@@ -567,12 +567,19 @@ export default defineComponent({
         return
       }
 
-      try {
-        await navigator.clipboard.writeText(text)
+      if (await copyTextToClipboard(text)) {
         this.transcriptCopied = true
         showToast(this.t('Video.Player.Transcribe.Copied'))
-      } catch {
-        this.transcriptCopied = false
+        return
+      }
+
+      this.transcriptCopied = false
+
+      // The automatic copy that follows a finished job has no user gesture
+      // behind it, and an origin without a clipboard API refuses a gesture-less
+      // copy. That is not worth interrupting the user for: the Copy Transcript
+      // button carries a real gesture and reports its own failure.
+      if (!silent) {
         showToast(this.t('Video.Player.Transcribe.Copy Failed'), 5000)
       }
     },
