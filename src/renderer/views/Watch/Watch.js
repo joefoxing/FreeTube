@@ -196,6 +196,14 @@ export default defineComponent({
       transcriptErrorCode: '',
       transcriptCopied: false,
       transcriptJobId: null,
+      // Correlation for in-flight jobs. `transcriptRequestSeq` is a
+      // monotonically increasing id captured per handleTranscribe call;
+      // `transcriptStaleJobIds` records the job ids of jobs we deliberately
+      // tore down (user cancel / video change). Together they let a late
+      // rejection or status event from a superseded or cancelled job be
+      // discarded instead of clobbering the request that is actually current.
+      transcriptRequestSeq: 0,
+      transcriptStaleJobIds: [],
       // True while a job is being torn down on purpose (user cancel or video
       // change), so the in-flight rejection resolves as "cancelled" and never
       // as an error.
@@ -424,6 +432,10 @@ export default defineComponent({
       const secondsAfter = this.$store.getters.getTranscriptionSecondsAfter
       const window_ = clampTranscriptWindow(currentTime, secondsBefore, secondsAfter, this.videoLengthSeconds)
 
+      // Capture this request's identity before the first await so a late
+      // rejection from a superseded request can be recognised and dropped.
+      const requestSeq = ++this.transcriptRequestSeq
+
       this.transcriptCancelled = false
       this.transcriptVisible = true
       this.transcriptState = 'queued'
@@ -443,9 +455,23 @@ export default defineComponent({
           token: this.$store.getters.getTranscriptionToken
         })
 
+        // A newer request has superseded this one: drop its result rather than
+        // letting it overwrite the current request's job id and state.
+        if (requestSeq !== this.transcriptRequestSeq) {
+          return
+        }
+
         this.transcriptJobId = result.jobId
         this.handleTranscribeResult(result.view)
       } catch (error) {
+        // Drop the rejection entirely when a newer request has superseded this
+        // one: the `transcriptCancelled` flag was already reset for the new
+        // job and Electron delivers the rejection as a code-less Error, so
+        // treating it as a failure here would clobber the current job.
+        if (requestSeq !== this.transcriptRequestSeq) {
+          return
+        }
+
         // A user cancel (or the video-change teardown) aborts the in-flight
         // job and rejects here with E_CANCELLED. That is not an error state.
         if (this.transcriptCancelled || error?.code === 'E_CANCELLED') {
@@ -462,14 +488,24 @@ export default defineComponent({
     },
 
     handleTranscribeStatus: function (view) {
-      if (view?.jobId) {
-        this.transcriptJobId = view.jobId
+      const jobId = view?.jobId
+
+      // Ignore any event belonging to a job we deliberately tore down or that a
+      // newer request has superseded: it must not touch the current request's
+      // job id, state, or error code while another job is running.
+      if (jobId && this.transcriptStaleJobIds.includes(jobId)) {
+        return
       }
 
       // A deliberately cancelled job reports back as an error carrying
       // E_CANCELLED; it must not surface as a failure.
       if (this.transcriptCancelled || view?.error?.code === 'E_CANCELLED') {
         return
+      }
+
+      // Only now is this event allowed to claim the current job id.
+      if (jobId) {
+        this.transcriptJobId = jobId
       }
 
       this.transcriptState = view.state
@@ -487,6 +523,12 @@ export default defineComponent({
     },
 
     handleTranscribeResult: function (view) {
+      // Never let a result from a torn-down or superseded job land on the
+      // request that is actually current.
+      if (view?.jobId && this.transcriptStaleJobIds.includes(view.jobId)) {
+        return
+      }
+
       if (view.state === 'done') {
         this.transcriptSegments = view.segments
         this.transcriptState = 'done'
@@ -503,8 +545,16 @@ export default defineComponent({
     },
 
     copyTranscript: async function () {
+      const text = formatTranscriptText(this.transcriptSegments)
+
+      // Nothing to copy (e.g. a 'done' job that produced zero segments): do
+      // not claim success for an empty transcript.
+      if (!text) {
+        return
+      }
+
       try {
-        await navigator.clipboard.writeText(formatTranscriptText(this.transcriptSegments))
+        await navigator.clipboard.writeText(text)
         this.transcriptCopied = true
         showToast(this.t('Video.Player.Transcribe.Copied'))
       } catch {
@@ -514,11 +564,22 @@ export default defineComponent({
     },
 
     handleTranscribeSeek: function (seconds) {
-      this.$refs.player.setCurrentTime(seconds)
+      // The player is v-if-gated and unmounts on a player error, so the ref can
+      // be gone by the time a transcript line is clicked.
+      if (this.$refs.player) {
+        this.$refs.player.setCurrentTime(seconds)
+      }
     },
 
     cancelTranscribe: function () {
       this.transcriptCancelled = true
+
+      // Remember this job's id so any late rejection or status event it emits
+      // can be recognised as belonging to a torn-down job.
+      if (this.transcriptJobId && !this.transcriptStaleJobIds.includes(this.transcriptJobId)) {
+        this.transcriptStaleJobIds.push(this.transcriptJobId)
+      }
+
       window.ftElectron.transcribeCancel(this.transcriptJobId)
       this.transcriptState = 'cancelled'
       this.transcriptVisible = false
