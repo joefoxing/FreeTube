@@ -991,6 +991,13 @@ Video:
       Busy: Already transcribing this video
       Window Clamped: Requested window was shortened to the service limit
       Not Configured: Set a transcription service URL in Settings → Player Settings
+      Failed: Transcription failed
+      ServiceUnreachable: Transcription service is not reachable
+      Unauthorized: The transcription service rejected the token
+      FetchAudioFailed: Could not fetch the audio for this section
+      DecodeAudioFailed: Could not prepare the fetched audio
+      TimedOut: Transcription timed out
+      WindowInvalid: That section of the video cannot be transcribed
     Show Stats: Show Stats
     Hide Stats: Hide Stats
     Stats:
