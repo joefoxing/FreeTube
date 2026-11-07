@@ -256,6 +256,39 @@
       </FtFlexBox>
       <br>
     </div>
+    <br>
+    <FtFlexBox>
+      <FtInput
+        :placeholder="t('Settings.Player Settings.Transcript.Service URL')"
+        :value="transcriptionServiceUrl"
+        :show-action-button="false"
+        @blur="updateTranscriptionServiceUrl"
+      />
+    </FtFlexBox>
+    <FtFlexBox>
+      <FtInput
+        :placeholder="t('Settings.Player Settings.Transcript.Token')"
+        :value="transcriptionToken"
+        :show-action-button="false"
+        @blur="updateTranscriptionToken"
+      />
+    </FtFlexBox>
+    <FtFlexBox>
+      <FtInput
+        :placeholder="t('Settings.Player Settings.Transcript.Seconds Before')"
+        :value="transcriptionSecondsBefore.toString()"
+        :show-action-button="false"
+        @blur="value => updateTranscriptionSecondsBefore(Number(value) || 60)"
+      />
+    </FtFlexBox>
+    <FtFlexBox>
+      <FtInput
+        :placeholder="t('Settings.Player Settings.Transcript.Seconds After')"
+        :value="transcriptionSecondsAfter.toString()"
+        :show-action-button="false"
+        @blur="value => updateTranscriptionSecondsAfter(Number(value) || 180)"
+      />
+    </FtFlexBox>
   </FtSettingsSection>
 </template>
 
@@ -693,6 +726,46 @@ async function getScreenshotFilenameExample(pattern) {
     screenshotFilenameExample.value = `❗ ${err.message}`
     return false
   }
+}
+
+/** @type {import('vue').ComputedRef<string>} */
+const transcriptionServiceUrl = computed(() => store.getters.getTranscriptionServiceUrl)
+
+/** @type {import('vue').ComputedRef<string>} */
+const transcriptionToken = computed(() => store.getters.getTranscriptionToken)
+
+/** @type {import('vue').ComputedRef<number>} */
+const transcriptionSecondsBefore = computed(() => store.getters.getTranscriptionSecondsBefore)
+
+/** @type {import('vue').ComputedRef<number>} */
+const transcriptionSecondsAfter = computed(() => store.getters.getTranscriptionSecondsAfter)
+
+/**
+ * @param {string} value
+ */
+function updateTranscriptionServiceUrl(value) {
+  store.dispatch('updateTranscriptionServiceUrl', value)
+}
+
+/**
+ * @param {string} value
+ */
+function updateTranscriptionToken(value) {
+  store.dispatch('updateTranscriptionToken', value)
+}
+
+/**
+ * @param {number} value
+ */
+function updateTranscriptionSecondsBefore(value) {
+  store.dispatch('updateTranscriptionSecondsBefore', value)
+}
+
+/**
+ * @param {number} value
+ */
+function updateTranscriptionSecondsAfter(value) {
+  store.dispatch('updateTranscriptionSecondsAfter', value)
 }
 </script>
 
