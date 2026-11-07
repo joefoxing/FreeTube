@@ -119,8 +119,14 @@ export function createTranscribeClient({ fetchImpl = globalThis.fetch, sleep = d
       onUpdate,
       signal,
       pollIntervalMs = 1000,
-      fetchTimeoutMs = 120000,
-      transcribeTimeoutMs = 240000
+      // These budgets must stay ABOVE the service's own limits, or the client
+      // abandons a job the service still considers healthy. The service allows a
+      // fetch to run FETCH_TIMEOUT_SECONDS (300s) plus a 120s decode before it
+      // ever reports `transcribing`, and on a throttled connection a fetch of a
+      // 4-minute section really does take ~124s. With the old 120s budget the
+      // client threw E_TIMEOUT while the service went on to finish the job.
+      fetchTimeoutMs = 480000,
+      transcribeTimeoutMs = 300000
     }) {
       const startedAt = Date.now()
 
