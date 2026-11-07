@@ -10,6 +10,10 @@ import { createTranscribeClient } from './transcribeClient.js'
 /** @type {Map<string, AbortController>} */
 const activeJobs = new Map()
 
+// Distinguishes a synchronously-reserved slot (taken before client.startJob
+// resolves, when the real job id is not yet known) from a live job's id.
+let nextReservationId = 0
+
 /**
  * @param {{ ipcMain: import('electron').IpcMain, client?: ReturnType<typeof createTranscribeClient> }} options
  */
@@ -25,6 +29,14 @@ export function registerTranscribeIpc({ ipcMain, client = createTranscribeClient
     }
 
     const controller = new AbortController()
+
+    // Reserve the single in-flight slot SYNCHRONOUSLY, before the first await,
+    // so a second start arriving during startJob's HTTP round-trip is rejected
+    // as busy. Keyed by a placeholder until the real job id is known; without
+    // this, two racing starts would both pass the activeJobs.size guard and
+    // spawn two workers.
+    const reservationId = `pending:${nextReservationId++}`
+    activeJobs.set(reservationId, controller)
     let jobId = null
 
     const send = view => {
@@ -36,6 +48,9 @@ export function registerTranscribeIpc({ ipcMain, client = createTranscribeClient
     try {
       const job = await client.startJob({ serviceUrl, token, videoId, startSeconds, endSeconds, signal: controller.signal })
       jobId = job.jobId
+      // Swap the placeholder reservation for the real job id so cancel-by-id
+      // can still target the in-flight job once it is running.
+      activeJobs.delete(reservationId)
       activeJobs.set(jobId, controller)
 
       const view = await client.waitForJob({
@@ -55,6 +70,10 @@ export function registerTranscribeIpc({ ipcMain, client = createTranscribeClient
       if (jobId !== null) {
         activeJobs.delete(jobId)
       }
+      // Always release the reservation, including when startJob failed before
+      // returning a job id — otherwise a leaked reservation would block every
+      // later start as busy.
+      activeJobs.delete(reservationId)
     }
   })
 

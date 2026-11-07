@@ -179,6 +179,92 @@ test('a second TRANSCRIBE_START while a job is in flight rejects with E_BUSY', a
   await first.catch(() => {})
 })
 
+test('a second TRANSCRIBE_START racing during the first startJob round-trip rejects with E_BUSY', async () => {
+  const { registerTranscribeIpc } = await loadHandler()
+  const { IpcChannels } = await loadChannels()
+
+  const sent = []
+  const ipcMain = makeIpcMain()
+
+  // startJob does not resolve until we release it, so the first start sits in
+  // the exact TOCTOU window (accepted, but not yet registered in activeJobs)
+  // while the second start arrives — no setImmediate, no sleeps.
+  let releaseStartJob
+  const startJobGate = new Promise(resolve => {
+    releaseStartJob = resolve
+  })
+  let startJobCalls = 0
+
+  const client = {
+    startJob: async () => {
+      startJobCalls += 1
+      await startJobGate
+      return { jobId: 'j1' }
+    },
+    waitForJob: hangingWaitForJob()
+  }
+
+  registerTranscribeIpc({ ipcMain, client })
+  const start = ipcMain.handlers.get(IpcChannels.TRANSCRIBE_START)
+
+  const first = start({ sender: makeSender(sent) }, payload)
+  first.catch(() => {})
+
+  // Invoke the second start synchronously, still inside the first's window.
+  const second = start({ sender: makeSender(sent) }, payload)
+  second.catch(() => {})
+
+  // The old (broken) guard entered startJob a second time here; the fixed guard
+  // rejects before startJob is ever called.
+  assert.equal(startJobCalls, 1, 'startJob must not be entered for the rejected concurrent start')
+  await assert.rejects(second, error => error.code === 'E_BUSY')
+
+  // Let the first start proceed, then finish it so the registry is released.
+  releaseStartJob()
+  await new Promise(resolve => setImmediate(resolve))
+  ipcMain.listeners.get(IpcChannels.TRANSCRIBE_CANCEL)({}, 'j1')
+  await first.catch(() => {})
+})
+
+test('the in-flight slot is released after a failed start so a later start can proceed', async () => {
+  const { registerTranscribeIpc } = await loadHandler()
+  const { IpcChannels } = await loadChannels()
+
+  const sent = []
+  const ipcMain = makeIpcMain()
+
+  let attempt = 0
+  const client = {
+    startJob: async () => {
+      attempt += 1
+      if (attempt === 1) {
+        const error = new Error('service unreachable')
+        error.code = 'E_SERVICE_UNREACHABLE'
+        throw error
+      }
+      return { jobId: `j${attempt}` }
+    },
+    waitForJob: async ({ onUpdate, signal: _signal }) => {
+      const view = { jobId: `j${attempt}`, state: 'done', stage: 'done', progress: 1, segments: [] }
+      onUpdate(view)
+      return view
+    }
+  }
+
+  registerTranscribeIpc({ ipcMain, client })
+  const start = ipcMain.handlers.get(IpcChannels.TRANSCRIBE_START)
+
+  await assert.rejects(
+    () => start({ sender: makeSender(sent) }, payload),
+    error => error.code === 'E_SERVICE_UNREACHABLE'
+  )
+
+  // If the failed start had leaked its reservation, this would reject E_BUSY.
+  const result = await start({ sender: makeSender(sent) }, payload)
+  assert.equal(result.jobId, 'j2')
+  assert.equal(result.view.state, 'done')
+})
+
 test('TRANSCRIBE_START without a service URL rejects with E_WINDOW_INVALID', async () => {
   const { registerTranscribeIpc } = await loadHandler()
   const { IpcChannels } = await loadChannels()
