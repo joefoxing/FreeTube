@@ -247,10 +247,16 @@ Service (real suite, pytest):
   video window; asserts the known opening words and that segment timestamps fall
   inside the requested window.
 
-App (honest state): FreeTube ships no test runner in this checkout (no `test`
-script, no vitest/jest config), so app-side verification is `pnpm run lint` plus
-live verification — not a unit suite. Adding a runner is out of scope for this
-feature.
+App (corrected during planning): the checkout ships no test runner (no `test`
+script, no vitest/jest config), so app-side tests are plain modules under
+`tests/*.test.cjs` run by Node's built-in runner — `node --test
+"tests/**/*.test.cjs"` — with application modules loaded via dynamic `import()`.
+That covers the pure logic (window clamping, text/timestamp formatting, error
+mapping, and the whole HTTP client including its polling, timeout and cancel
+paths, tested against a stub server on localhost) with zero new dependencies;
+`tests/` sits outside `src/`, so eslint's and webpack's `src/**` globs never see
+these files. A bare directory argument to `--test` fails on Node 22, which is
+why the glob form is specified. UI behaviour is verified live, not unit-tested.
 
 Live verification I will actually perform and report:
 1. Start the service; `GET /health` shows the pinned yt-dlp version and a loaded
