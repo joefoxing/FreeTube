@@ -23,10 +23,12 @@ function cancelledError() {
 // says otherwise, and pushes one running view immediately.
 function makeClient() {
   let settle = null
+  let onUpdateRef = null
 
   return {
     startJob: async () => ({ jobId: 'j1' }),
     waitForJob: ({ onUpdate, signal }) => {
+      onUpdateRef = onUpdate
       onUpdate({ jobId: 'j1', state: 'running', stage: 'fetching', progress: 10 })
 
       return new Promise((resolve, reject) => {
@@ -36,7 +38,13 @@ function makeClient() {
         }
 
         signal.addEventListener('abort', () => reject(cancelledError()), { once: true })
-        settle = () => resolve({ jobId: 'j1', state: 'done', stage: 'done', progress: 100, segments: [] })
+        settle = () => {
+          // The real client calls onUpdate on EVERY poll, the terminal one
+          // included (src/main/transcribeClient.js:132-137), so the stub must too.
+          const view = { jobId: 'j1', state: 'done', stage: 'done', progress: 100, segments: [] }
+          onUpdateRef(view)
+          resolve(view)
+        }
       })
     },
     finish: () => settle()
@@ -62,7 +70,7 @@ test('start returns main-process shaped result and pushes views to subscribers',
   assert.equal(result.startSeconds, 0)
   assert.equal(result.endSeconds, 30)
   assert.equal(result.view.state, 'done')
-  assert.deepEqual(seen.map(view => view.state), ['running'])
+  assert.deepEqual(seen.map(view => view.state), ['running', 'done'])
 
   unsubscribe()
 })

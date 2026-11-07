@@ -1,7 +1,7 @@
 # FreeTube transcribe in the browser — the same feature in the web build, over Tailscale HTTPS
 
 **Date:** 2026-11-07
-**Status:** Approved (design approved in chat this session; NOT yet implemented)
+**Status:** Implemented and verified — see `## Verification run` below
 **Repo:** `/home/joefox/developer/freetube` (app) and `/home/joefox/developer/freetube-stt`
 (service), plus tailnet `serve` configuration
 **Closes:** the Electron-only gap that made the landed transcribe feature unreachable from
@@ -98,11 +98,11 @@ differently.
 
 ## Cost
 
-Measured on this host, not estimated: the app suite is 28 tests in ~0.3 s
-(`node --test "tests/**/*.test.cjs"`), the service suite is 35 tests in 0.89 s
-(`uv run pytest tests -q`), and a transcription job's only cost is CPU on the local service
-(whisper `base`, 4 threads). Nothing in this design is paid, and the two new `serve` entries
-cost nothing.
+Measured on this host, not estimated: the app suite is 31 tests in ~0.3 s
+(`node --test "tests/**/*.test.cjs"`), the service suite is 39 passed (40 collected, 1
+deselected) in ~0.9 s (`uv run pytest tests -q`), and a transcription job's only cost is CPU on
+the local service (whisper `base`, 4 threads). Nothing in this design is paid, and the two new
+`serve` entries cost nothing.
 
 ## What this does not do
 
@@ -129,11 +129,11 @@ cost nothing.
 * `tests/test_api.py` (service) — extended with the CORS cases: an allowed origin gets
   `access-control-allow-origin`, a disallowed one does not, and the preflight `OPTIONS`
   carrying `Authorization` succeeds. Run `cd /home/joefox/developer/freetube-stt && uv run
-  pytest tests -q` (35 today; the count rises by the new cases).
+  pytest tests -q` (39 pass, 40 collected, 1 deselected today, the new CORS cases included).
 * `tests/transcribe-backend-web.test.cjs` (app, new) — with an injected fake client, in the
   style of `tests/transcribe-ipc.test.cjs`: a second `start` while one is in flight rejects
   with the `E_BUSY` shape, and `cancel` aborts the in-flight request. Run `node --test
-  "tests/**/*.test.cjs"` (28 today).
+  "tests/**/*.test.cjs"` (31 today).
 * A mutation pass for each new gate: break it (remove the origin from the allowlist; remove
   the in-flight guard), expect RED, restore, and confirm the suite is green and the file is
   unchanged.
