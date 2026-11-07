@@ -22,6 +22,7 @@
           :manifest-src="manifestSrc"
           :manifest-mime-type="manifestMimeType"
           :sabr-data="sabrData"
+          :transcribe-enabled="transcribeEnabled"
           :legacy-formats="legacyFormats"
           :start-time="startTimeSeconds"
           :captions="captions"

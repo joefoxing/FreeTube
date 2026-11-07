@@ -189,6 +189,12 @@ export default defineComponent({
     historyEntry: function () {
       return this.$store.getters.getHistoryCacheById[this.videoId]
     },
+    transcribeEnabled: function () {
+      return process.env.IS_ELECTRON === true && this.transcriptionServiceUrl !== ''
+    },
+    transcriptionServiceUrl: function () {
+      return this.$store.getters.getTranscriptionServiceUrl
+    },
     historyEntryExists: function () {
       return typeof this.historyEntry !== 'undefined'
     },

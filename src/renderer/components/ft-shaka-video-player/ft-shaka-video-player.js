@@ -10,6 +10,7 @@ import { LegacyQualitySelection } from './player-components/LegacyQualitySelecti
 import { ScreenshotButton } from './player-components/ScreenshotButton'
 import { StatsButton } from './player-components/StatsButton'
 import { TheatreModeButton } from './player-components/TheatreModeButton'
+import { TranscribeButton } from './player-components/TranscribeButton'
 import { AutoplayToggle } from './player-components/AutoplayToggle'
 import { SkipButton } from './player-components/SkipButton'
 import {
@@ -177,6 +178,10 @@ export default defineComponent({
       type: Number,
       default: 0
     },
+    transcribeEnabled: {
+      type: Boolean,
+      default: false
+    },
   },
   emits: [
     'error',
@@ -189,6 +194,7 @@ export default defineComponent({
     'skip-to-next',
     'skip-to-prev',
     'player-reload-requested',
+    'transcribe',
   ],
   setup: function (props, { emit, expose }) {
     const { locale, t } = useI18n()
@@ -853,6 +859,7 @@ export default defineComponent({
           'chapter',
           'loop',
           'ft_screenshot',
+          'ft_transcribe',
           'picture_in_picture',
           'ft_full_window',
           'recenter_vr',
@@ -865,6 +872,7 @@ export default defineComponent({
       } else {
         uiConfig.controlPanelElements.push(
           'ft_screenshot',
+          'ft_transcribe',
           'ft_autoplay_toggle',
           'overflow_menu',
           'picture_in_picture',
@@ -889,6 +897,10 @@ export default defineComponent({
 
       if (!enableScreenshot.value || props.format === 'audio') {
         removeFromArrayIfExists(elementList, 'ft_screenshot')
+      }
+
+      if (!props.transcribeEnabled) {
+        removeFromArrayIfExists(elementList, 'ft_transcribe')
       }
 
       if (!props.theatrePossible) {
@@ -1989,6 +2001,24 @@ export default defineComponent({
       shakaOverflowMenu.registerElement('ft_screenshot', new ScreenshotButtonFactory())
     }
 
+    function registerTranscribeButton() {
+      events.addEventListener('transcribe', () => {
+        emit('transcribe')
+      })
+
+      /**
+       * @implements {shaka.extern.IUIElement.Factory}
+       */
+      class TranscribeButtonFactory {
+        create(rootElement, controls) {
+          return new TranscribeButton(props.transcribeEnabled, events, rootElement, controls)
+        }
+      }
+
+      shakaControls.registerElement('ft_transcribe', new TranscribeButtonFactory())
+      shakaOverflowMenu.registerElement('ft_transcribe', new TranscribeButtonFactory())
+    }
+
     function registerSkipButtons() {
       // skip to next video button
       events.addEventListener('nextVideo', () => {
@@ -2367,6 +2397,23 @@ export default defineComponent({
         return
       }
 
+      // Transcribe the current video (ctrl+t, or cmd+t on macOS).
+      // This has to be handled before the ctrl early-return below, otherwise a
+      // ctrl-modified key would be swallowed before it can reach the shortcut
+      // switch (which only matches bare letters anyway).
+      if (
+        event.key.toLowerCase() === 't' &&
+        ((process.platform !== 'darwin' && event.ctrlKey) ||
+          (process.platform === 'darwin' && event.metaKey))
+      ) {
+        if (props.transcribeEnabled) {
+          event.preventDefault()
+          events.dispatchEvent(new CustomEvent('transcribe'))
+        }
+        blurTooltipButtons()
+        return
+      }
+
       // allow chapter jump keyboard shortcuts
       if (event.ctrlKey && (process.platform === 'darwin' || (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight'))) {
         return
@@ -2623,6 +2670,19 @@ export default defineComponent({
           }
           blurTooltipButtons()
           break
+        // Note: TRANSCRIBE ('ctrl+t') can never reach this switch, because the
+        // `event.key.toLowerCase()` subject is a bare letter while the constant
+        // carries a modifier prefix, and ctrl-modified keys already returned
+        // above. It is kept (unreachable today) purely as defence should the
+        // constant ever become a bare letter. The live binding is the explicit
+        // ctrl+t handler at the top of this function.
+        case KeyboardShortcuts.VIDEO_PLAYER.GENERAL.TRANSCRIBE:
+          if (props.transcribeEnabled) {
+            event.preventDefault()
+            events.dispatchEvent(new CustomEvent('transcribe'))
+          }
+          blurTooltipButtons()
+          break
       }
     }
 
@@ -2852,6 +2912,7 @@ export default defineComponent({
       videoResizeObserver.observe(videoElement)
 
       registerScreenshotButton()
+      registerTranscribeButton()
       registerAudioTrackSelection()
       registerAutoplayToggle()
 
