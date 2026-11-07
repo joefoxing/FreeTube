@@ -112,6 +112,13 @@ cost nothing.
 * `ctrl+t` remains unsupported in the browser; a working binding there (a non-reserved key) is
   a separate decision, deliberately not guessed at here.
 * No new settings fields, no new UI, no progress bars.
+* **Cancelling does not cancel the job on the service.** Both backends abort the app's polling and
+  forget the job, while the service's own `POST /jobs/{job_id}/cancel` route is never called: the
+  client implements it (`src/main/transcribeClient.js:157`) and only its own test uses it. A
+  cancelled job therefore runs to completion and its result is discarded. That is the landed
+  Electron behaviour, reproduced deliberately by the web backend rather than changed here — fixing
+  it means one call in each backend and a decision about whether a cancelled job should also stop
+  the CPU it is using.
 * The already-recorded residuals stay: the overlay anchor point on wide viewports, the
   never-built clamp toast, blur-only settings commits, and the renderer's correlation logic
   having no unit test.
