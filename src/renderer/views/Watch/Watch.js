@@ -190,7 +190,7 @@ export default defineComponent({
       return this.$store.getters.getHistoryCacheById[this.videoId]
     },
     transcribeEnabled: function () {
-      return process.env.IS_ELECTRON === true && this.transcriptionServiceUrl !== ''
+      return process.env.IS_ELECTRON && this.transcriptionServiceUrl !== ''
     },
     transcriptionServiceUrl: function () {
       return this.$store.getters.getTranscriptionServiceUrl

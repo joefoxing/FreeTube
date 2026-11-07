@@ -2360,6 +2360,7 @@ export default defineComponent({
       'full-window-button',
       'theatre-button',
       'screenshot-button',
+      'transcribe-button',
     ]
     function blurTooltipButtons() {
       const element = document.activeElement
@@ -2409,9 +2410,13 @@ export default defineComponent({
         if (props.transcribeEnabled) {
           event.preventDefault()
           events.dispatchEvent(new CustomEvent('transcribe'))
+          blurTooltipButtons()
+          return
         }
-        blurTooltipButtons()
-        return
+        // Transcribe is disabled, so this key is not ours to consume: fall
+        // through and let it keep its previous owner (on darwin that is the
+        // THEATRE_MODE case below; on other platforms the ctrl early-return,
+        // where ctrl+t was already a no-op).
       }
 
       // allow chapter jump keyboard shortcuts
@@ -2671,11 +2676,12 @@ export default defineComponent({
           blurTooltipButtons()
           break
         // Note: TRANSCRIBE ('ctrl+t') can never reach this switch, because the
-        // `event.key.toLowerCase()` subject is a bare letter while the constant
-        // carries a modifier prefix, and ctrl-modified keys already returned
-        // above. It is kept (unreachable today) purely as defence should the
-        // constant ever become a bare letter. The live binding is the explicit
-        // ctrl+t handler at the top of this function.
+        // `event.key.toLowerCase()` subject is a single bare letter while the
+        // constant is the multi-character string 'ctrl+t' — they can never be
+        // equal, even if the ctrl early-return above did not exist. It is kept
+        // (unreachable today) purely as defence should the constant ever become
+        // a bare letter. The live binding is the explicit ctrl+t handler at the
+        // top of this function.
         case KeyboardShortcuts.VIDEO_PLAYER.GENERAL.TRANSCRIBE:
           if (props.transcribeEnabled) {
             event.preventDefault()
