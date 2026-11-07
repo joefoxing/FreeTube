@@ -88,7 +88,7 @@ differently.
 | case | behaviour |
 |---|---|
 | Preview origin missing from the allowlist | the browser blocks the request before it reaches the service; the overlay shows the mapped service-unreachable message; the fix is the `Config` line |
-| Page opened over the old plain-HTTP origin | the copy call throws and the app shows its existing "copying failed" notice; the rest of the feature works |
+| Page opened over the old plain-HTTP origin | the transcribe click fails there: that origin is not in the CORS allowlist, so the service refuses the preflight (measured: `OPTIONS /jobs 400`, no `POST`) and the overlay shows the mapped service-unreachable message; the copy call also throws (`navigator.clipboard` is undefined on that origin) and the app shows its existing "copying failed" notice. Serving the preview over Tailscale HTTPS is what fixes both |
 | Service unreachable or refused | the existing mapped message; no crash |
 | Bogus token | `401` → the existing "the transcription service rejected the token" message |
 | Second click while a job runs | the existing busy toast, with the backend's in-flight guard as the backstop |
@@ -219,7 +219,7 @@ last 2:  [(475.26, 'a career disaster or some other scary consequence.'),
 Character-for-character identical to the overlay's first/second/third and last lines for the
 same window.
 
-**Check 5 — click a transcript line and confirm it seeks to that timestamp. PASS.** Clicking
+**Check 5 — click a transcript line and confirm it seeks to that timestamp. PASS.** (The playhead was moved by setting `currentTime` — the same property the app's `setCurrentTime` writes through — because no media plays in this harness; see the caveat below.) Clicking
 overlay lines moved the media element (which the app reads through
 `$refs.player.getCurrentTime()` / writes through `setCurrentTime`, i.e. `video.currentTime`)
 to the line's own timestamp:
@@ -261,7 +261,7 @@ token>` re-checked as `true`.
 
 **Check 8 — after the job completes, the clipboard matches the overlay text. PASS.**
 `navigator.clipboard.readText()` on the same secure origin, compared against the overlay's own
-plain-text form and against the rendered DOM (job 2, window `4:05 – 8:05`, 44 lines):
+plain-text form and against the rendered DOM (the later job, window `4:05 – 8:05`, 44 lines):
 
 ```
 winLabel:"4:05 – 8:05", lines:44
