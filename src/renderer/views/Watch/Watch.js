@@ -45,6 +45,7 @@ import {
 import { sortCaptions } from '../../helpers/player/utils'
 import { MANIFEST_TYPE_SABR } from '../../helpers/player/SabrManifestParser'
 import { clampTranscriptWindow, formatTranscriptText } from '../../helpers/transcript'
+import { start as transcribeStart, cancel as transcribeCancel, onStatus as onTranscribeStatus } from '../../transcribe/backend/index.js'
 import { useI18n } from 'vue-i18n'
 
 /**
@@ -224,7 +225,7 @@ export default defineComponent({
       return this.$store.getters.getHistoryCacheById[this.videoId]
     },
     transcribeEnabled: function () {
-      return process.env.IS_ELECTRON && this.transcriptionServiceUrl !== ''
+      return this.transcriptionServiceUrl !== ''
     },
     transcriptionServiceUrl: function () {
       return this.$store.getters.getTranscriptionServiceUrl
@@ -413,9 +414,7 @@ export default defineComponent({
   mounted: function () {
     this.onMountedDependOnLocalStateLoading()
 
-    if (process.env.IS_ELECTRON) {
-      this.transcribeStatusUnsubscribe = window.ftElectron.onTranscribeStatus(this.handleTranscribeStatus)
-    }
+    this.transcribeStatusUnsubscribe = onTranscribeStatus(this.handleTranscribeStatus)
   },
   unmounted: function () {
     if (this.transcribeStatusUnsubscribe) {
@@ -455,7 +454,7 @@ export default defineComponent({
       this.transcriptWindow = window_
 
       try {
-        const result = await window.ftElectron.transcribeStart({
+        const result = await transcribeStart({
           videoId: this.videoId,
           startSeconds: window_.start,
           endSeconds: window_.end,
@@ -603,7 +602,7 @@ export default defineComponent({
         }
       }
 
-      window.ftElectron.transcribeCancel(this.transcriptJobId)
+      transcribeCancel(this.transcriptJobId)
       this.transcriptState = 'cancelled'
       this.transcriptVisible = false
     },

@@ -635,7 +635,7 @@ cd /home/joefox/developer/freetube && node --test "tests/**/*.test.cjs"
 cd /home/joefox/developer/freetube-stt && uv run pytest tests -q
 ```
 
-Expected: 31 app tests, 41 service tests (`1 deselected`), all passing.
+Expected: 31 app tests; the service suite is `39 passed, 1 deselected` (40 collected — the `41` this step predicted was a miscount, corrected here), all passing.
 
 - [ ] **Step 2: Drive the real browser against the HTTPS origin**
 
