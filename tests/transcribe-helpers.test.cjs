@@ -42,7 +42,7 @@ test('timestamps format below and above an hour', async () => {
   assert.equal(formatTimestamp(3725), '1:02:05')
 })
 
-test('transcript text is one timestamped line per segment', async () => {
+test('the copied transcript is plain text with no timestamps', async () => {
   const { formatTranscriptText } = await load()
 
   const text = formatTranscriptText([
@@ -50,7 +50,7 @@ test('transcript text is one timestamped line per segment', async () => {
     { start: 66.5, end: 70, text: 'general kenobi' }
   ])
 
-  assert.equal(text, '[1:00] Hello there\n[1:06] general kenobi')
+  assert.equal(text, 'Hello there\ngeneral kenobi')
 })
 
 test('an empty segment list formats to an empty string', async () => {
@@ -68,7 +68,7 @@ test('whitespace-only segments are skipped', async () => {
     { start: 2, end: 3, text: '\n\t' }
   ])
 
-  assert.equal(text, '[0:01] Real line')
+  assert.equal(text, 'Real line')
 })
 
 test('service errors map to i18n keys with a fallback', async () => {

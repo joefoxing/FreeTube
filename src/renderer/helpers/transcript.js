@@ -52,10 +52,10 @@ export function formatTimestamp(seconds) {
 }
 
 /**
- * One timestamped line per non-blank segment. Segments carry ABSOLUTE video
- * seconds in `start` (the service already offsets them), so no re-offsetting
- * happens here. Whitespace-only segments are dropped so a transcript never
- * contains a bare `[m:ss]` line.
+ * The transcript as plain text: one line per segment, no timestamps.
+ *
+ * The times belong to the overlay, where they are seek links; pasted into a
+ * document or a note they are noise, and the user asked for clean text.
  *
  * @param {{ start: number, end: number, text: string }[]} segments
  * @returns {string}
@@ -63,7 +63,7 @@ export function formatTimestamp(seconds) {
 export function formatTranscriptText(segments) {
   return segments
     .filter(segment => String(segment.text ?? '').trim().length > 0)
-    .map(segment => `[${formatTimestamp(segment.start)}] ${segment.text}`)
+    .map(segment => String(segment.text).trim())
     .join('\n')
 }
 
