@@ -104,3 +104,12 @@
   padding-inline: 10px;
   border-block-start: 1px solid rgb(255 255 255 / 15%);
 }
+
+.transcriptSource {
+  /* Pushes the note to the start of the row, leaving the button on the end. */
+  margin-inline-end: auto;
+  align-self: center;
+  margin-block: 0;
+  font-size: 0.85em;
+  opacity: 0.8;
+}

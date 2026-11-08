@@ -1,3 +1,7 @@
+<!--
+  The transcript overlay: a busy state with the current stage, an error state with
+  Retry, and the finished transcript with clickable lines that seek the player.
+-->
 <template>
   <div
     v-if="visible"
@@ -62,6 +66,14 @@
         </button>
       </div>
       <div class="transcriptFooter">
+        <!-- The job says where its text came from: captions cost seconds, a
+             transcription means the audio really was run. -->
+        <p
+          v-if="cameFromSubtitles"
+          class="transcriptSource"
+        >
+          {{ t('Video.Player.Transcribe.FromSubtitles') }}
+        </p>
         <FtButton
           :label="copied ? t('Video.Player.Transcribe.Copied') : t('Video.Player.Transcribe.Copy Transcript')"
           @click="$emit('copy')"
@@ -101,6 +113,8 @@ const isBusy = computed(() => props.state === 'queued' || props.state === 'runni
 
 const stageLabel = computed(() => {
   switch (props.stage) {
+    case 'subtitles':
+      return t('Video.Player.Transcribe.Subtitles')
     case 'fetching':
       return t('Video.Player.Transcribe.Fetching audio')
     case 'decoding':
@@ -111,6 +125,10 @@ const stageLabel = computed(() => {
       return t('Video.Player.Transcribe.Transcribing')
   }
 })
+
+// A finished job leaves the stage at whatever produced the text: 'subtitles'
+// when the video's own captions answered it, 'transcribing' when the audio did.
+const cameFromSubtitles = computed(() => props.stage === 'subtitles')
 
 const windowLabel = computed(() => `${formatTimestamp(props.windowStart)} – ${formatTimestamp(props.windowEnd)}`)
 </script>
