@@ -131,6 +131,7 @@ export function createRemoteAgent(options) {
     getVideo,
     getMeta,
     onPairCode = () => {},
+    onStatus = () => {},
     navigate = videoId => { window.location.hash = `#/watch/${videoId}` },
     WebSocketImpl = globalThis.WebSocket,
     now = Date.now,
@@ -203,6 +204,7 @@ export function createRemoteAgent(options) {
 
     next.onopen = () => {
       attempt = 0
+      onStatus(true)
       // Nothing secret goes in the URL: the bridge reads this first frame and
       // rejects the socket with 4403 if the key is unknown.
       next.send(JSON.stringify({ t: 'auth', role: 'player', key: deviceKey }))
@@ -214,6 +216,7 @@ export function createRemoteAgent(options) {
     }
     next.onmessage = onMessage
     next.onclose = () => {
+      onStatus(false)
       detach?.()
       detach = null
       clearIntervalImpl(ticker)

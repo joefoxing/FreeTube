@@ -320,16 +320,18 @@
       />
     </FtFlexBox>
     <FtFlexBox class="screenshotFolderContainer">
-      <p class="screenshotFilenamePatternTitle">
-        {{ t('Settings.Player Settings.Remote.Enable') }}
-      </p>
       <FtToggleSwitch
         :label="t('Settings.Player Settings.Remote.Enable')"
         :default-value="remoteControlEnabled"
         @change="updateRemoteControlEnabled"
       />
+      <span class="pairHint">
+        {{ connected
+          ? t('Settings.Player Settings.Remote.Connected')
+          : t('Settings.Player Settings.Remote.Not Connected') }}
+      </span>
     </FtFlexBox>
-    <template v-if="remoteControlEnabled">
+    <div v-if="remoteControlEnabled" class="remoteControls">
       <FtFlexBox class="screenshotFolderContainer">
         <p class="screenshotFilenamePatternTitle">
           {{ t('Settings.Player Settings.Remote.Bridge') }}
@@ -354,7 +356,7 @@
       <p v-if="pairing" class="pairHint">
         {{ t('Settings.Player Settings.Remote.Hint') }}
       </p>
-    </template>
+    </div>
   </FtSettingsSection>
 </template>
 
@@ -811,11 +813,17 @@ const remoteControlUrl = computed(() => store.getters.getRemoteControlUrl)
 /** @type {import('vue').Ref<{code: string, pairUrl: string, qr: string}|null>} */
 const pairing = ref(null)
 
+/** @type {import('vue').Ref<boolean>} */
+const connected = ref(false)
+
 /** @type {null | (() => void)} */
 let unsubscribePairing = null
 
 onMounted(() => {
-  unsubscribePairing = subscribe(snapshot => { pairing.value = snapshot.pairing })
+  unsubscribePairing = subscribe(snapshot => {
+    pairing.value = snapshot.pairing
+    connected.value = snapshot.connected
+  })
 })
 
 onBeforeUnmount(() => {

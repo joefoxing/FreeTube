@@ -25,6 +25,7 @@ export function status() {
 
 export function subscribe(listener) {
   listeners.add(listener)
+  listener(status())
   return () => listeners.delete(listener)
 }
 
@@ -51,6 +52,7 @@ export function start(url) {
     deviceKey: getDeviceKey(window.localStorage),
     getVideo: () => videoRef,
     getMeta: () => metaRef(),
+    onStatus: () => emit(),
     onPairCode: (code, pairUrl) => {
       pairing = code ? { code, pairUrl, qr: qrUrl(pairUrl, code) } : null
       emit()

@@ -26,6 +26,7 @@ function makeAgent(overrides = {}) {
       getVideo: () => overrides.video ?? null,
       getMeta: () => ({ videoId: 'abc', title: 'T', channel: 'C', thumbnail: '' }),
       onPairCode: overrides.onPairCode ?? (() => {}),
+      onStatus: overrides.onStatus ?? (() => {}),
       WebSocketImpl: FakeSocket,
       now: () => 1000,
       setTimeoutImpl: (fn, ms) => { overrides.timers?.push(ms); return 0 },
@@ -125,4 +126,15 @@ test('a command is applied and acked with the bridge id', async () => {
   const ack = socket.sent.find(m => m.t === 'ack')
   assert.deepEqual(ack, { t: 'ack', id: 7, ok: true })
   assert.equal(video.currentTime, 20)
+})
+
+test('a status callback fires when the socket opens and closes', async () => {
+  FakeSocket.instances = []
+  const seen = []
+  const agent = await makeAgent({ onStatus: open => seen.push(open) })
+  agent.start()
+  const socket = FakeSocket.instances.at(-1)
+  socket.open()
+  socket.close()
+  assert.deepEqual(seen, [true, false])
 })

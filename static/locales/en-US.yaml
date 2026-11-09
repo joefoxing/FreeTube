@@ -456,6 +456,8 @@ Settings:
       Bridge: Remote bridge address
       Pair: Pair a phone
       Hint: Enter this code in the remote app. It works for five minutes.
+      Connected: Connected
+      Not Connected: Not connected
     Play Next Video: Autoplay Recommended Videos
     Autoplay Playlists: Autoplay Playlist Videos
     Autoplay Videos: Start Videos Automatically

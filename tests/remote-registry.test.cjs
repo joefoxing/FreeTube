@@ -24,3 +24,12 @@ test('stop() is idempotent and leaves no socket owned', async () => {
   registry.stop()
   assert.deepEqual(registry.status(), { enabled: false, connected: false, pairing: null })
 })
+
+test('a new subscriber is told the current state immediately', async () => {
+  const registry = await import('../src/renderer/remote/index.js')
+  const seen = []
+  const unsubscribe = registry.subscribe(snapshot => seen.push(snapshot))
+  unsubscribe()
+  assert.equal(seen.length, 1)
+  assert.equal(seen[0].enabled, false)
+})
