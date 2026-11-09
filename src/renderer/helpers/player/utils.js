@@ -6,6 +6,14 @@ import { MIME_TYPE_CODECS_REGEX } from '../utils'
 /** @typedef {import('../sponsorblock').SponsorBlockCategory} SponsorBlockCategory */
 
 /**
+ * Throwaway base used ONLY to parse a possibly-relative Invidious `BaseURL`
+ * without throwing. It never reaches the player: shaka resolves the real
+ * `BaseURL` against the manifest's own URL, and the code below only ever reads
+ * the query string.
+ */
+const RELATIVE_URL_BASE = 'https://invidious.invalid/'
+
+/**
  * @param {shaka.util.Error} error
  * @param {string} context
  * @param {string} videoId
@@ -245,7 +253,14 @@ export function repairInvidiousManifest(periods) {
           ?.children[0]
 
         if (baseUrl) {
-          const url = new URL(baseUrl.replaceAll('&amp;', '&'))
+          // Invidious writes a RELATIVE BaseURL ("/companion/videoplayback?...")
+          // whenever it proxies the streams through itself, and `new URL()` on a
+          // relative value with no base throws "TypeError: Invalid URL" — which
+          // aborts this whole preprocessing pass, so shaka rejects the manifest and
+          // the app silently falls back to the single muxed 360p legacy stream
+          // (every video then looks like it only has 360p). Resolve against a
+          // placeholder so a relative BaseURL parses like an absolute one.
+          const url = new URL(baseUrl.replaceAll('&amp;', '&'), RELATIVE_URL_BASE)
 
           if (url.searchParams.has('xtags')) {
             const xtags = url.searchParams.get('xtags').split(':')
