@@ -129,6 +129,7 @@ import packageDetails from '../../package.json'
 import { openExternalLink, openInternalPath, showToast } from './helpers/utils'
 import { translateWindowTitle } from './helpers/strings'
 import { loadLocale } from './i18n/index'
+import { start as startRemoteControl, stop as stopRemoteControl } from './remote/index.js'
 import { getLocalClip } from './helpers/api/local.js'
 import { getClipInvidious } from './helpers/api/invidious.js'
 
@@ -230,7 +231,19 @@ onMounted(async () => {
   document.addEventListener('dragstart', handleDragStart)
 })
 
+onMounted(() => {
+  if (store.getters.getRemoteControlEnabled) {
+    startRemoteControl(store.getters.getRemoteControlUrl)
+  }
+})
+
+watch(() => store.getters.getRemoteControlEnabled, enabled => {
+  if (enabled) startRemoteControl(store.getters.getRemoteControlUrl)
+  else stopRemoteControl()
+})
+
 onBeforeUnmount(() => {
+  stopRemoteControl()
   document.removeEventListener('keydown', handleKeyboardShortcuts)
   document.removeEventListener('mousedown', handleMouseDown)
   document.removeEventListener('dragstart', handleDragStart)

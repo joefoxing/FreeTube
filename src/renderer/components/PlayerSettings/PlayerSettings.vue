@@ -319,11 +319,47 @@
         @blur="value => updateTranscriptionSecondsAfter(parseTranscriptionSeconds(value, 180))"
       />
     </FtFlexBox>
+    <FtFlexBox class="screenshotFolderContainer">
+      <p class="screenshotFilenamePatternTitle">
+        {{ t('Settings.Player Settings.Remote.Enable') }}
+      </p>
+      <FtToggleSwitch
+        :label="t('Settings.Player Settings.Remote.Enable')"
+        :default-value="remoteControlEnabled"
+        @change="updateRemoteControlEnabled"
+      />
+    </FtFlexBox>
+    <template v-if="remoteControlEnabled">
+      <FtFlexBox class="screenshotFolderContainer">
+        <p class="screenshotFilenamePatternTitle">
+          {{ t('Settings.Player Settings.Remote.Bridge') }}
+        </p>
+        <FtInput
+          class="screenshotFilenamePatternInput"
+          :placeholder="t('Settings.Player Settings.Remote.Bridge')"
+          :value="remoteControlUrl"
+          :show-action-button="false"
+          :show-label="false"
+          @blur="updateRemoteControlUrl"
+        />
+      </FtFlexBox>
+      <FtFlexBox class="screenshotFolderContainer">
+        <FtButton
+          :label="t('Settings.Player Settings.Remote.Pair')"
+          @click="pairPhone"
+        />
+        <span v-if="pairing" class="pairCode">{{ pairing.code }}</span>
+        <img v-if="pairing" :src="pairing.qr" class="pairQr" alt="">
+      </FtFlexBox>
+      <p v-if="pairing" class="pairHint">
+        {{ t('Settings.Player Settings.Remote.Hint') }}
+      </p>
+    </template>
   </FtSettingsSection>
 </template>
 
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import FtSettingsSection from '../FtSettingsSection/FtSettingsSection.vue'
@@ -336,6 +372,7 @@ import FtInput from '../FtInput/FtInput.vue'
 import FtTooltip from '../FtTooltip/FtTooltip.vue'
 
 import store from '../../store/index'
+import { requestPairing, subscribe } from '../../remote/index.js'
 
 const { t } = useI18n()
 
@@ -763,6 +800,45 @@ const transcriptionServiceUrl = computed(() => store.getters.getTranscriptionSer
 
 /** @type {import('vue').ComputedRef<string>} */
 const transcriptionToken = computed(() => store.getters.getTranscriptionToken)
+
+
+/** @type {import('vue').ComputedRef<boolean>} */
+const remoteControlEnabled = computed(() => store.getters.getRemoteControlEnabled)
+
+/** @type {import('vue').ComputedRef<string>} */
+const remoteControlUrl = computed(() => store.getters.getRemoteControlUrl)
+
+/** @type {import('vue').Ref<{code: string, pairUrl: string, qr: string}|null>} */
+const pairing = ref(null)
+
+/** @type {null | (() => void)} */
+let unsubscribePairing = null
+
+onMounted(() => {
+  unsubscribePairing = subscribe(snapshot => { pairing.value = snapshot.pairing })
+})
+
+onBeforeUnmount(() => {
+  unsubscribePairing?.()
+})
+
+/**
+ * @param {boolean} value
+ */
+function updateRemoteControlEnabled(value) {
+  store.dispatch('updateRemoteControlEnabled', value)
+}
+
+/**
+ * @param {string} value
+ */
+function updateRemoteControlUrl(value) {
+  store.dispatch('updateRemoteControlUrl', value)
+}
+
+function pairPhone() {
+  requestPairing()
+}
 
 /** @type {import('vue').ComputedRef<number>} */
 const transcriptionSecondsBefore = computed(() => store.getters.getTranscriptionSecondsBefore)

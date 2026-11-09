@@ -32,6 +32,7 @@
           :thumbnail="thumbnail"
           :video-id="videoId"
           :channel-id="channelId"
+          :channel-name="channelName"
           :chapters="videoChapters"
           :current-chapter-index="videoCurrentChapterIndex"
           :chapters-src="chaptersSrc"

@@ -303,6 +303,8 @@ const state = {
   transcriptionToken: '',
   transcriptionSecondsBefore: 60,
   transcriptionSecondsAfter: 180,
+  remoteControlEnabled: false,
+  remoteControlUrl: 'wss://nextcloud.taild1347f.ts.net:10000/remote/ws',
   screenshotQuality: 95,
   screenshotFolderPath: '',
   screenshotFilenamePattern: '%Y%M%D-%H%N%S',
