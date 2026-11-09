@@ -117,7 +117,20 @@
         </button>
       </div>
     </div>
-    <FtProfileSelector class="side profiles" />
+    <div class="side profiles">
+      <button
+        class="navButton darkModeButton"
+        :aria-label="darkModeToggleLabel"
+        :title="darkModeToggleLabel"
+        @click="toggleDarkMode"
+      >
+        <FontAwesomeIcon
+          class="navIcon"
+          :icon="['fas', isDarkMode ? 'sun' : 'moon']"
+        />
+      </button>
+      <FtProfileSelector />
+    </div>
   </nav>
 </template>
 
@@ -133,7 +146,7 @@ import FtIconButton from '../FtIconButton/FtIconButton.vue'
 
 import store from '../../store/index'
 
-import { KeyboardShortcuts, MOBILE_WIDTH_THRESHOLD, SEARCH_RESULTS_DISPLAY_LIMIT } from '../../../constants'
+import { DARK_BASE_THEMES, KeyboardShortcuts, MOBILE_WIDTH_THRESHOLD, SEARCH_RESULTS_DISPLAY_LIMIT } from '../../../constants'
 import { debounce, localizeAndAddKeyboardShortcutToActionTitle, openInternalPath } from '../../helpers/utils'
 import { translateWindowTitle } from '../../helpers/strings'
 import { clearLocalSearchSuggestionsSession, getLocalClip, getLocalSearchSuggestions } from '../../helpers/api/local'
@@ -158,6 +171,37 @@ const hideHeaderLogo = computed(() => store.getters.getHideHeaderLogo)
 const enableSearchSuggestions = computed(() => store.getters.getEnableSearchSuggestions)
 /** @type {import('vue').ComputedRef<string>} */
 const barColor = computed(() => store.getters.getBarColor)
+/** @type {import('vue').ComputedRef<string>} */
+const baseTheme = computed(() => store.getters.getBaseTheme)
+
+const systemThemeQuery = window.matchMedia('(prefers-color-scheme: dark)')
+const isSystemDark = ref(systemThemeQuery.matches)
+
+/** @param {MediaQueryListEvent} event */
+function handleSystemThemeChange(event) {
+  isSystemDark.value = event.matches
+}
+
+// The 'system' base theme follows the OS, so the toggle has to follow it too
+systemThemeQuery.addEventListener('change', handleSystemThemeChange)
+
+/** @type {import('vue').ComputedRef<boolean>} */
+const isDarkMode = computed(() => {
+  const theme = baseTheme.value
+
+  return theme == null || theme === 'system'
+    ? isSystemDark.value
+    : DARK_BASE_THEMES.includes(theme)
+})
+
+/** @type {import('vue').ComputedRef<string>} */
+const darkModeToggleLabel = computed(() => {
+  return isDarkMode.value ? t('Light Mode') : t('Dark Mode')
+})
+
+function toggleDarkMode() {
+  store.dispatch('updateBaseTheme', isDarkMode.value ? 'light' : 'dark')
+}
 
 const expandCollapseSideBarLabel = computed(() => {
   return store.getters.getIsSideNavOpen ? t('Compact side navigation') : t('Expand side navigation')
@@ -698,6 +742,8 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   window.removeEventListener('resize', handleWindowResize)
+
+  systemThemeQuery.removeEventListener('change', handleSystemThemeChange)
 
   if (process.env.IS_ELECTRON) {
     window.removeEventListener('keydown', handleKeyboardShortcuts)
