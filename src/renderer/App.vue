@@ -183,11 +183,20 @@ onMounted(async () => {
     await store.dispatch('setRandomCurrentInvidiousInstance')
   }
 
-  store.dispatch('fetchInvidiousInstances').then(() => {
-    if (defaultInvidiousInstance.value === '') {
-      store.dispatch('setRandomCurrentInvidiousInstance')
-    }
-  })
+  if (process.env.IS_ELECTRON) {
+    // Only the desktop build may re-randomise the instance list from
+    // api.invidious.io. The WEB preview is pinned (static/invidious-instances.json)
+    // to an Invidious instance hosted on this box (Canada): YouTube geo-blocks by
+    // the requesting ip, and the upstream list's only CORS-capable entry sits in
+    // the US, so videos that are available here fail there with "The uploader has
+    // not made this video available in your country" — the INSTANCE's country, not
+    // the user's.
+    store.dispatch('fetchInvidiousInstances').then(() => {
+      if (defaultInvidiousInstance.value === '') {
+        store.dispatch('setRandomCurrentInvidiousInstance')
+      }
+    })
+  }
 
   store.dispatch('grabAllProfiles', t('Profile.All Channels')).then(() => {
     store.dispatch('grabHistory')
