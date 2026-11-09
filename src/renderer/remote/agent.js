@@ -177,6 +177,14 @@ export function createRemoteAgent(options) {
   }
 
   async function onCommand(message) {
+    // 'open' is a navigation request, not a media one: the likeliest moment to
+    // paste a link is while nothing is playing, and the settings page has no
+    // <video> element at all. Every other command needs the element.
+    if (message.cmd === 'open') {
+      const code = await applyCommand(message, null, { navigate })
+      send({ t: 'ack', id: message.id, ok: code === null, ...(code ? { code } : {}) })
+      return
+    }
     const video = getVideo()
     if (!video) {
       send({ t: 'ack', id: message.id, ok: false, code: 'E_NO_PLAYER' })

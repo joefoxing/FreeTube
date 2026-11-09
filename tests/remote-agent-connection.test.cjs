@@ -138,3 +138,47 @@ test('a status callback fires when the socket opens and closes', async () => {
   socket.close()
   assert.deepEqual(seen, [true, false])
 })
+
+test('open works with no media element on screen', async () => {
+  FakeSocket.instances = []
+  const calls = []
+  const agent = await makeAgent({ navigate: id => calls.push(id) })
+  agent.start()
+  const socket = FakeSocket.instances.at(-1)
+  socket.open()
+  socket.sent.length = 0
+  socket.receive({ t: 'cmd', id: 9, cmd: 'open', videoId: 'arj7oStGLkU' })
+  await new Promise(resolve => setImmediate(resolve))
+  assert.deepEqual(calls, ['arj7oStGLkU'])
+  assert.deepEqual(socket.sent.find(m => m.t === 'ack'), { t: 'ack', id: 9, ok: true })
+})
+
+test('open with a bad id navigates nowhere, with or without a media element', async () => {
+  FakeSocket.instances = []
+  const calls = []
+  const agent = await makeAgent({ navigate: id => calls.push(id) })
+  agent.start()
+  const socket = FakeSocket.instances.at(-1)
+  socket.open()
+  socket.sent.length = 0
+  socket.receive({ t: 'cmd', id: 10, cmd: 'open', videoId: 'https://evil.example/x' })
+  await new Promise(resolve => setImmediate(resolve))
+  assert.deepEqual(calls, [])
+  assert.deepEqual(socket.sent.find(m => m.t === 'ack'), {
+    t: 'ack', id: 10, ok: false, code: 'E_BAD_VIDEO_ID'
+  })
+})
+
+test('a playback command with no media element is still E_NO_PLAYER', async () => {
+  FakeSocket.instances = []
+  const agent = await makeAgent()
+  agent.start()
+  const socket = FakeSocket.instances.at(-1)
+  socket.open()
+  socket.sent.length = 0
+  socket.receive({ t: 'cmd', id: 11, cmd: 'toggle' })
+  await new Promise(resolve => setImmediate(resolve))
+  assert.deepEqual(socket.sent.find(m => m.t === 'ack'), {
+    t: 'ack', id: 11, ok: false, code: 'E_NO_PLAYER'
+  })
+})

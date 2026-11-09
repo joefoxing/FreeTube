@@ -1,9 +1,9 @@
 # A phone web app that drives the FreeTube preview — pairing, transport, and a bridge
 
 **Date:** 2026-11-09
-**Status:** BUILT (Stage 1) — branch `freetube-remote` in the FreeTube checkout, bridge in
+**Status:** BUILT (Stages 1–2) — branch `freetube-remote` in the FreeTube checkout, bridge in
 `~/developer/freetube-remote`, live at `https://nextcloud.taild1347f.ts.net:10000/remote/`.
-Stages 2–4 remain designed only.
+Stages 3–4 remain designed only.
 Amended 2026-11-09: ingress moved from a tailnet-only Caddy vhost to **Tailscale Funnel**, because
 the phone must work with Tailscale off.
 **Repo:** `/home/joefox/developer/freetube` (renderer + settings), plus a new
@@ -377,8 +377,12 @@ Each check must be able to go red. The mutation that removes the property is nam
   `tailscale funnel status` shows both the `/` proxy and `/remote` (mutation: drop `--set-path`
   → the remote URL 404s).
 
-**Stage 2** — a link pasted on the phone navigates the player to that video within 2 s; a malformed
-link shows an error and navigates nothing (mutation: drop the id validation → red).
+**Stage 2** — MEASURED 2026-11-09: a link pasted on the phone navigates the player to that
+video in 55.5 ms (runs: 56, 61, 64.6, 75.6 ms; contract ≤ 2 s); a malformed link shows
+"That is not a YouTube link." and sends nothing; a bad id sent straight down the socket is
+acked `E_BAD_VIDEO_ID` and navigates nothing (mutations: drop `parseVideoId`'s final id test →
+the parser suite goes red; drop the agent's `VIDEO_ID` test → the bad-id test goes red).
+Evidence in the bridge repo's `docs/verification.md`.
 
 ## Cost
 
