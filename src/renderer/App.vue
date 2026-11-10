@@ -35,12 +35,7 @@
         v-slot="{ Component }"
         class="routerView"
       >
-        <Transition
-          mode="out-in"
-          name="fade"
-        >
-          <component :is="Component" />
-        </Transition>
+        <component :is="Component" />
       </RouterView>
     </FtFlexBox>
     <FtPrompt
