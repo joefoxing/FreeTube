@@ -99,21 +99,22 @@ State (`store/modules/karaoke.js`):
 
 ```
 queue: {
-  items: [ { id, videoId, title, channelName, channelId, thumbnail,
-             durationSeconds, singerId, priority, votes: [singerId], addedAt,
-             source: 'search' | 'remote' | 'playlist' } ],
-  currentId, playedIds: [],          // played = LIFO for "previous"
+  current: { id, videoId, title, channel, channelId, thumbnail, durationSeconds,
+             requester, priority, addedAt } | null,   // the song on screen
+  items: [ ...same shape... ],   // pending only; `current` is NOT in here, so it cannot
+                                 // be reordered, removed or dragged by accident
+  played: [ ...item snapshots... ], // LIFO, capped at 50, for "previous"
   rotation: 'fifo' | 'round_robin',
   active: false,
   settings: { priorityCap: 2, filterOn: true, minSeconds: 90, maxSeconds: 720 }
 }
 ```
 
-The array **is** the order, and every mutation moves a row; there is no shadow sort key.
+`items` **is** the order, and every mutation moves a row; there is no shadow sort key.
 
 - normal add → append.
-- priority add → insert at the END of the priority block (after the current item, behind earlier
-  priority requests): priority jumps the line, FIFO inside the tier.
+- priority add → insert after the leading run of priority items (so earlier priority requests
+  keep their place): priority jumps the line, FIFO inside the tier.
 - promote (★) → same reposition as a priority add.
 - duplicate `videoId` in the queue → refused with a toast, no silent dedupe of a different singer's
   request.
@@ -122,10 +123,9 @@ The array **is** the order, and every mutation moves a row; there is no shadow s
   cannot outrank another singer's turn, that is what rotation means).
 - drag → explicit move; last writer wins (a later vote can move a dragged item; documented, not a
   bug).
-- play → the current item stays in `items` as `currentId` until it ends or is skipped; leaving
-  removes it and pushes its id onto `playedIds` (capped at 50).
-- previous → the current item returns to the FRONT of the normal tier, and the last `playedIds`
-  entry becomes current again, so prev-then-next is an identity.
+- play → the item leaves `items` into `current`; when it ends or is skipped, it moves onto `played`.
+- previous → `played` pops its last snapshot back into `current`, and the song that was playing
+  returns to the front of the normal tier, so prev-then-next is an identity.
 - `next()`:
 
 ```
@@ -148,9 +148,12 @@ word for it, and the fairness cap below is what stops one singer monopolising it
   `from` hash, so the cap exists from the first shippable stage.
 - **Exhausted queue:** stop, and do not fall back to recommended videos — that is how non-karaoke
   leaks into a karaoke party.
-- Persistence: Vuex in memory, mirrored (debounced ~1 s) to `localStorage` per profile id, so a
-  reload mid-party does not lose the queue. Queue persistence deliberately does **not** use a nedb
-  datastore: a party queue is high-churn state, while singers and scores (below) are records.
+- Persistence: Vuex in memory, mirrored (debounced ~1 s) to a single `localStorage` key
+  (`freetube-karaoke`), so a reload mid-party does not lose the queue. One key, not one per
+  profile: switching profiles mid-party is not a case, and a party queue that disappears because
+  the TV profile changed is a worse failure than a shared key. Queue persistence deliberately does
+  **not** use a nedb datastore: a party queue is high-churn state, while singers and scores
+  (below) are records.
 
 ### 4. Singers and rotation
 
@@ -162,11 +165,12 @@ word for it, and the fairness cap below is what stops one singer monopolising it
 - Phones claim a name: on first pairing in karaoke mode the phone shows "Who are you?" — pick a
   roster name, or create one. No passwords; the TV host can reassign or rename any singer,
   including releasing a name from a lost phone.
-- Identity on the wire: the bridge stamps `from` on every relayed command — `sha256(phone token)`
-  truncated to 12 hex chars, computed once at socket auth. The token itself never reaches the
-  player. Without this stamp, "your songs" and voting are self-declared and worthless.
-  `singerClaim` binds the sender's hash to the roster row (`singer.phoneId`), which is how the
-  player resolves `from` to a singer, a host, and a vote.
+- Identity on the wire: the bridge stamps `from` on every relayed command — the phone's room id
+  (`ph_…`, already minted by `rooms.claim` and stored hashed-token → phone, so `Rooms` gains a
+  `lookup_phone(token) -> (player_id, phone_id)`). The token itself never reaches the player, and
+  the id is opaque. Without this stamp, "your songs" and voting are self-declared and worthless.
+  `singerClaim` binds that id to the roster row (`singer.phoneId`), which is how the player resolves
+  `from` to a singer, a host, and a vote.
 - Rotation: `round_robin` advances a cursor over active singers who have pending songs, skipping
   empty ones so there is no dead air; `fifo` is the plain queue.
 - One singer may hold the current song and a queue; the phone shows "your songs" first.
@@ -198,7 +202,7 @@ word for it, and the fairness cap below is what stops one singer monopolising it
   a suggestion with a 10-second timer.
 - `handleSkipToNext` (`:1807`) uses `pick()`; `handleSkipToPrev` (`:1819`) pops `playedIds` and
   navigates back.
-- A queue item played by any path (next, prev, direct click) is recorded in `playedIds` and the
+- A queue item played by any path (next, prev, direct click) is recorded in `played` and the
   item leaves the queue only when it has actually ended.
 - **A playlist watch does not survive the mode.** If karaoke is active and the queue is non-empty,
   the queue owns next/prev even on a page reached from a playlist; the page shows a one-line notice
@@ -259,9 +263,12 @@ frame: the queue with 20 upcoming rows is ~2.4 KB and state frames ride media ev
 ```
 { t:'queue',
   karaoke: { active, rotation, current: {...}, upcoming: [...≤20],
-             priorityCount, singers: [...], votes: { itemId: [singerId] },
+             priorityCount, playedCount, singers: [...], votes: { itemId: [singerId] },
              scores: {...} } }
 ```
+
+Advancing needs no new command: the existing `next` / `prev` already go through the on-screen skip
+buttons, which in karaoke mode pick from the queue.
 
 `buildState` stays as it is; `karaoke.active` is added to the state frame so the phone can show the
 mode without the queue.
@@ -274,7 +281,6 @@ New phone → player commands (relayed like the existing ones, validated in `age
 | `queueAdd` | `{ videoId, title, channel, durationSeconds, thumbnail, priority }` | `videoId` `/^[\w-]{11}$/`; duplicate refused; cap enforced |
 | `queuePromote` / `queueRemove` / `queueClear` | `{ id }` / `{}` | `queueClear` requires the host singer |
 | `queueMove` | `{ id, toIndex }` | own songs only, unless the sender is the host |
-| `queueNext` / `queuePrev` | `{}` | goes through `pick()`, same as the on-screen buttons |
 | `vote` | `{ id }` | toggles the singer's vote; `E_NOT_QUEUED` after play |
 | `singerClaim` | `{ name }` | creates or claims a roster row |
 | `scoreSubmit` | `{ videoId, score, kind: 'peer' }` | peer only; auto scores are computed phone-side and submitted as numbers |
@@ -326,11 +332,13 @@ Bridge changes (the only Python in the feature):
 Each stage is its own plan and its own shippable increment.
 
 **P1 — core.** Mode flag + `/karaoke` route + karaoke search + queue reducer, priority tier and
-the per-requester cap + Watch wiring + remote commands/queue frame + localStorage persistence.
-*Proves:* a party can run from the TV alone.
+the per-requester cap + Watch wiring + remote commands/queue frame + the bridge's `from` stamp and
+`queue` relay + localStorage persistence.
+*Proves:* a party can run from the TV alone, and a queued song advances on its own when the last
+one ends.
 
-**P2 — singers and rotation.** Roster datastore, phone claim screen, `from` stamping in the hub,
-rotation scheduling, fairness cap, singers strip on the TV.
+**P2 — singers and rotation.** Roster datastore, phone claim screen, rotation scheduling, singers
+strip on the TV, host powers — built on the `from` stamp P1 lands.
 *Proves:* two phones, two names, alternating turns, and a third priority request demoted.
 
 **P3 — voting.** Vote command, ordering rule, counts in both UIs.
