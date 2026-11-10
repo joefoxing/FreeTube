@@ -26,7 +26,7 @@
     <div class="karaokeOptions">
       <label>
         <input
-          v-model="filterOn"
+          v-model="unfiltered"
           class="karaokeUnfiltered"
           type="checkbox"
         >
@@ -149,6 +149,14 @@ const filterOn = computed({
   set: value => store.dispatch('karaokeSetSettings', { filterOn: value })
 })
 
+// The checkbox's label reads "Show unfiltered results", so it is bound to the
+// inverse of the stored `filterOn` flag: unchecked by default (karaoke-only),
+// checked shows unfiltered results.
+const unfiltered = computed({
+  get: () => !settings.value.filterOn,
+  set: value => store.dispatch('karaokeSetSettings', { filterOn: !value })
+})
+
 const minSeconds = computed({
   get: () => settings.value.minSeconds,
   set: value => store.dispatch('karaokeSetSettings', { minSeconds: Number(value) || 90 })
@@ -175,13 +183,15 @@ function thumbnailOf(video) {
 async function search() {
   const text = buildKaraokeQuery(query.value)
 
-  if (text === '') {
-    return
-  }
-
   isLoading.value = true
   results.value = []
   searched.value = true
+
+  if (text === '') {
+    isLoading.value = false
+
+    return
+  }
 
   const bounds = { minSeconds: settings.value.minSeconds, maxSeconds: settings.value.maxSeconds }
 
