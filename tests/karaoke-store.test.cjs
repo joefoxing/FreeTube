@@ -103,11 +103,64 @@ test('settings and mode are persisted with the queue', async () => {
   assert.equal(saved.active, true)
 })
 
-test('a persisted queue is restored, and a corrupt one is ignored', async () => {
+test('a persisted queue is restored', async () => {
+  const module = await load()
+  const { createQueue, serializeQueue } = await import('../src/renderer/helpers/karaoke-queue.js')
+  const storage = fakeStorage()
+  const base = createQueue()
+  const queue = {
+    ...base,
+    active: true,
+    items: [
+      { id: 'k_a', videoId: 'aaaaaaaaaaa', title: 'A', channel: 'x', durationSeconds: 100, requester: 'local', priority: true },
+      { id: 'k_b', videoId: 'bbbbbbbbbbb', title: 'B', channel: 'y', durationSeconds: 200, requester: 'local', priority: false }
+    ],
+    settings: { ...base.settings, minSeconds: 240 }
+  }
+  storage.setItem('freetube-karaoke', serializeQueue(queue))
+
+  globalThis.localStorage = storage
+  const state = module.default.state()
+  assert.deepEqual(state.items.map(entry => entry.title), ['A', 'B'])
+  assert.equal(state.items[0].priority, true)
+  assert.equal(state.active, true)
+  assert.equal(state.settings.minSeconds, 240)
+})
+
+test('a corrupt persisted queue is ignored', async () => {
   const module = await load()
   const storage = fakeStorage({ 'freetube-karaoke': 'not json' })
 
   globalThis.localStorage = storage
   assert.deepEqual(module.default.state().items, [])
   assert.equal(module.default.getters.getKaraokeActive(module.default.state()), false)
+})
+
+test('promote, remove, clear and move report their codes and leave a known queue', async () => {
+  const module = await load()
+  const ctx = await context(module, fakeStorage())
+  const actions = module.default.actions
+
+  await actions.karaokeAdd(ctx, { videoId: 'aaaaaaaaaaa', title: 'A' })
+  await actions.karaokeAdd(ctx, { videoId: 'bbbbbbbbbbb', title: 'B' })
+  await actions.karaokeAdd(ctx, { videoId: 'ccccccccccc', title: 'C' })
+  const [a, b] = ctx.state.items
+
+  // Unknown ids: E_NOT_FOUND, and neither call mutates the queue.
+  assert.equal(await actions.karaokeRemove(ctx, 'k_missing'), 'E_NOT_FOUND')
+  assert.equal(await actions.karaokePromote(ctx, 'k_missing'), 'E_NOT_FOUND')
+  assert.deepEqual(ctx.state.items.map(entry => entry.title), ['A', 'B', 'C'])
+
+  // A valid remove drops exactly that row.
+  assert.equal(await actions.karaokeRemove(ctx, b.id), null)
+  assert.deepEqual(ctx.state.items.map(entry => entry.title), ['A', 'C'])
+
+  // An out-of-range index yields E_BAD_INDEX and leaves the order untouched.
+  assert.equal(await actions.karaokeMove(ctx, { id: a.id, toIndex: 9 }), 'E_BAD_INDEX')
+  assert.deepEqual(ctx.state.items.map(entry => entry.title), ['A', 'C'])
+
+  // A valid clear empties items and current and returns null.
+  assert.equal(await actions.karaokeClear(ctx), null)
+  assert.deepEqual(ctx.state.items, [])
+  assert.equal(ctx.state.current, null)
 })

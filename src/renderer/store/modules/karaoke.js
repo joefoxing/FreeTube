@@ -124,7 +124,7 @@ export default {
     /** @returns {string|null} */
     karaokePromote({ state, commit }, payload) {
       const id = typeof payload === 'string' ? payload : payload?.id
-      const { queue, code } = promoteItem(snapshot(state), id, { force: payload?.force === true })
+      const { queue, code } = promoteItem(snapshot(state), id)
       commit('setKaraokeQueue', queue)
       persist(queue)
       return code
