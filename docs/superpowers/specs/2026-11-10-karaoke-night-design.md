@@ -280,16 +280,19 @@ New phone → player commands (relayed like the existing ones, validated in `age
 |---|---|---|
 | `karaokeSet` | `{ active }` | persists `karaoke.active` |
 | `queueAdd` | `{ videoId, title, channel, durationSeconds, thumbnail, priority }` | `videoId` `/^[\w-]{11}$/`; duplicate refused; cap enforced |
-| `queuePromote` / `queueRemove` / `queueClear` | `{ id }` / `{}` | `queueClear` requires the host singer |
-| `queueMove` | `{ id, toIndex }` | own songs only, unless the sender is the host |
+| `queuePromote` / `queueRemove` / `queueClear` | `{ itemId }` / `{}` | `queueClear` requires the host singer |
+| `queueMove` | `{ itemId, toIndex }` | own songs only, unless the sender is the host |
 | `vote` | `{ id }` | toggles the singer's vote; `E_NOT_QUEUED` after play |
 | `singerClaim` | `{ name }` | creates or claims a roster row |
 | `scoreSubmit` | `{ videoId, score, kind: 'peer' }` | peer only; auto scores are computed phone-side and submitted as numbers |
 | `playlistSave` / `playlistLoad` | `{ name?, includePlayed? }` / `{ playlistId }` | uses the playlists store |
 
+The envelope's `id` is the bridge's own correlation id for the ack, never a row target: a command that acts
+on a queued row names it with `itemId`, and the row's own `id` is always the one the queue generated.
+
 Bridge changes (the only Python in the feature):
 
-- `hub.py`: stamp `from` (12-hex hash of the phone token) on relayed `cmd`; relay the new `queue`
+- `hub.py`: stamp `from` (the phone's opaque room id, `ph_…`, from `rooms.claim`) on relayed `cmd`; relay the new `queue`
   frame from player to phones via `_to_phones`; store the last queue in `rooms` so `hello` gives a
   reconnecting phone the queue immediately (the existing "subscribe with an immediate snapshot"
   pitfall).
