@@ -9,6 +9,7 @@ import History from '../views/History/History.vue'
 import Settings from '../views/Settings/Settings.vue'
 import About from '../views/About/About.vue'
 import SearchPage from '../views/SearchPage/SearchPage.vue'
+import Karaoke from '../views/Karaoke/Karaoke.vue'
 import Playlist from '../views/Playlist/Playlist.vue'
 import Channel from '../views/Channel/Channel.vue'
 import Watch from '../views/Watch/Watch.vue'
@@ -106,6 +107,13 @@ const router = createRouter({
         title: 'Search Results'
       },
       component: SearchPage
+    },
+    {
+      path: '/karaoke',
+      meta: {
+        title: 'Karaoke'
+      },
+      component: Karaoke
     },
     {
       path: '/playlist/:id',

@@ -95,6 +95,27 @@
         </p>
       </router-link>
       <router-link
+        class="navOption mobileHidden"
+        role="button"
+        to="/karaoke"
+        :title="$t('Karaoke.Karaoke')"
+      >
+        <div
+          class="thumbnailContainer"
+        >
+          <FontAwesomeIcon
+            :icon="['fas', 'music']"
+            class="navIcon"
+            :class="applyNavIconExpand"
+          />
+        </div>
+        <p
+          class="navLabel"
+        >
+          {{ $t("Karaoke.Karaoke") }}
+        </p>
+      </router-link>
+      <router-link
         v-if="!hidePlaylists"
         class="navOption mobileShow"
         role="button"

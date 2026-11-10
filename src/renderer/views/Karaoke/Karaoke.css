@@ -1,0 +1,49 @@
+.karaoke {
+  inline-size: 100%;
+}
+
+.karaokeSearchRow {
+  display: flex;
+  gap: 8px;
+  margin-block: 12px;
+}
+
+.karaokeSearchInput {
+  flex: 1;
+}
+
+.karaokeOptions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  align-items: center;
+  margin-block-end: 12px;
+}
+
+.karaokeResult {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding-block: 8px;
+  border-block-end: 1px solid var(--card-bg-color, rgb(0 0 0 / 10%));
+}
+
+.karaokeResultThumbnail {
+  inline-size: 120px;
+  block-size: auto;
+}
+
+.karaokeResultMeta {
+  flex: 1;
+}
+
+.karaokeResultTitle {
+  margin: 0;
+  font-weight: bold;
+}
+
+.karaokeResultChannel {
+  margin: 0;
+  font-size: 13px;
+  opacity: 0.75;
+}

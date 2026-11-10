@@ -1302,3 +1302,26 @@ KeyboardShortcutPrompt:
   End: Seek to the end of the video
   Skip to Next Video: Skip to the next video in a playlist or next recommended video
   Skip to Previous Video: Skip to the previous video in a playlist
+
+Karaoke:
+  Karaoke: Karaoke
+  Karaoke Mode: Karaoke Mode
+  Search Karaoke: Search karaoke
+  Now Singing: Now singing
+  Queue: Queue
+  Queue Empty: Queue empty
+  Add To Queue: Add to queue
+  Play Now: Play now
+  Play Next: Play next
+  Priority: Priority
+  Remove: Remove
+  Clear Queue: Clear queue
+  Leave Karaoke Mode: Leave karaoke mode
+  Show Unfiltered Results: Show unfiltered results
+  Min Duration: Minimum length (seconds)
+  Max Duration: Maximum length (seconds)
+  Already Queued: Already in the queue
+  Priority Limit Reached: Priority limit reached - added to the normal queue
+  Cannot Queue: That video cannot be queued
+  No Karaoke Results: No karaoke results - try "Show unfiltered results"
+  Karaoke Search Failed: Karaoke search failed
