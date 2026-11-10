@@ -270,8 +270,9 @@ frame: the queue with 20 upcoming rows is ~2.4 KB and state frames ride media ev
 Advancing needs no new command: the existing `next` / `prev` already go through the on-screen skip
 buttons, which in karaoke mode pick from the queue.
 
-`buildState` stays as it is; `karaoke.active` is added to the state frame so the phone can show the
-mode without the queue.
+`buildState` stays as it is; the state frame gains one boolean field, `karaokeActive` (carrying the store's
+`karaoke.active` flag), so the phone can show the mode without the queue. The queue itself never rides that
+frame: it is sent separately, as its own `{t: 'queue'}` frame, whenever the queue changes.
 
 New phone → player commands (relayed like the existing ones, validated in `agent.js`):
 
