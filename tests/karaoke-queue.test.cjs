@@ -208,3 +208,109 @@ test('serialization round-trips and refuses another schema', async () => {
   assert.equal(deserializeQueue(JSON.stringify({ v: 99, items: [] })), null)
   assert.equal(deserializeQueue(null), null)
 })
+
+test('moveItem reads the priority tier from where the row lands, not from its old slot', async () => {
+  const { addItem, createQueue, moveItem } = await load()
+
+  // A is the only priority row and the row being moved, so the run of rows that stay put
+  // is empty: dropping A back at index 0 must leave it normal. The buggy rule — measuring
+  // the run over the ORIGINAL items, which still has A leading it — would keep A priority.
+  let queue = createQueue()
+  queue = addItem(queue, { ...A, priority: true }, 'ph_1').queue
+  queue = addItem(queue, B).queue
+  assert.deepEqual(ids(queue), ['A', 'B'])
+
+  const movedOne = moveItem(queue, queue.items.find(i => i.title === 'A').id, 0)
+  assert.equal(movedOne.code, null)
+  assert.deepEqual(ids(movedOne.queue), ['A', 'B'])
+  assert.equal(movedOne.queue.items.find(i => i.title === 'A').priority, false)
+
+  // Two leading priority rows: moving the first down one slot lands it outside the run
+  // that stayed (B alone), so it is demoted. The buggy rule counts BOTH leading priority
+  // rows and would keep A priority.
+  let two = createQueue()
+  two = addItem(two, { ...A, priority: true }, 'ph_1').queue
+  two = addItem(two, { ...B, priority: true }, 'ph_2').queue
+  assert.deepEqual(ids(two), ['A', 'B'])
+
+  const movedTwo = moveItem(two, two.items.find(i => i.title === 'A').id, 1)
+  assert.equal(movedTwo.code, null)
+  assert.deepEqual(ids(movedTwo.queue), ['B', 'A'])
+  assert.equal(movedTwo.queue.items.find(i => i.title === 'A').priority, false)
+  assert.equal(movedTwo.queue.items.find(i => i.title === 'B').priority, true)
+})
+
+test('pickNext prefers a priority row even when it is not first in the array', async () => {
+  const { createQueue, pickNext } = await load()
+
+  // The mutators never produce this state: addItem splices every priority row into the
+  // leading run, so a priority row can only sit behind a normal one when a queue is
+  // hand-assembled or loaded from storage. This pins the guard inside pickNext itself,
+  // rather than the ordering the mutators happen to leave behind.
+  const queue = {
+    ...createQueue(),
+    items: [
+      { ...B, priority: false },
+      { ...A, priority: true }
+    ]
+  }
+
+  assert.equal(pickNext(queue).title, 'A')
+})
+
+test('re-promoting a row that already holds priority is a no-op even at the cap', async () => {
+  const { addItem, createQueue, promoteItem } = await load()
+
+  // ph_1 holds its full two priority rows (A, B); C is a normal row from the same phone.
+  let queue = createQueue()
+  queue = addItem(queue, { ...A, priority: true }, 'ph_1').queue
+  queue = addItem(queue, { ...B, priority: true }, 'ph_1').queue
+  queue = addItem(queue, C, 'ph_1').queue
+  assert.deepEqual(ids(queue), ['A', 'B', 'C'])
+
+  // ★ on B, which is already priority: succeeds and leaves the order untouched.
+  const repromote = promoteItem(queue, queue.items.find(i => i.title === 'B').id)
+  assert.equal(repromote.code, null)
+  assert.deepEqual(ids(repromote.queue), ['A', 'B', 'C'])
+  assert.equal(repromote.queue.items.filter(i => i.priority).length, 2)
+
+  // A different, still-normal row from the same requester is still refused at the cap.
+  const newRow = promoteItem(queue, queue.items.find(i => i.title === 'C').id)
+  assert.equal(newRow.code, 'E_PRIORITY_CAP')
+  assert.deepEqual(ids(newRow.queue), ['A', 'B', 'C'])
+  assert.equal(newRow.queue.items.find(i => i.title === 'C').priority, false)
+})
+
+test('deserialize fills createQueue defaults for a v:1 payload missing or mistyping fields', async () => {
+  const { createQueue, deserializeQueue } = await load()
+  const defaults = createQueue()
+
+  const sparse = deserializeQueue(JSON.stringify({ v: 1 }))
+
+  assert.notEqual(sparse, null)
+  assert.deepEqual(sparse.items, [])
+  assert.deepEqual(sparse.played, [])
+  assert.deepEqual(sparse.settings, defaults.settings)
+  assert.equal(sparse.active, false)
+  assert.equal(sparse.rotation, 'fifo')
+  assert.equal(sparse.current, null)
+
+  const wrong = deserializeQueue(
+    JSON.stringify({
+      v: 1,
+      items: 'nope',
+      played: 7,
+      settings: 'nope',
+      current: 'nope',
+      active: 'yes',
+      rotation: 42
+    })
+  )
+
+  assert.deepEqual(wrong.items, [])
+  assert.deepEqual(wrong.played, [])
+  assert.deepEqual(wrong.settings, defaults.settings)
+  assert.equal(wrong.active, false)
+  assert.equal(wrong.rotation, 'fifo')
+  assert.equal(wrong.current, null)
+})

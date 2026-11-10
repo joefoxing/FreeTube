@@ -135,6 +135,14 @@ export function promoteItem(queue, id, options = {}) {
     return { queue, code: CODES.NOT_FOUND }
   }
 
+  // ★ on a row that already holds priority is a successful no-op: the row is excluded
+  // from its own cap check and left exactly where it is, so re-promoting at the cap
+  // returns null (not E_PRIORITY_CAP) and never reorders. Only a normal row is held to
+  // the cap.
+  if (item.priority) {
+    return { queue, code: null }
+  }
+
   if (!options.force && priorityCount(queue, item.requester) >= queue.settings.priorityCap) {
     return { queue, code: CODES.PRIORITY_CAP }
   }
@@ -280,13 +288,28 @@ export function deserializeQueue(json) {
   try {
     const raw = JSON.parse(json)
 
-    if (!raw || raw.v !== SCHEMA) {
+    if (!raw || typeof raw !== 'object' || raw.v !== SCHEMA) {
       return null
     }
 
-    const { v, ...rest } = raw
+    // Anything missing or of the wrong type falls back to a fresh queue's shape, so a
+    // partial payload (e.g. `{ v: 1 }`) can never hand the caller `items: undefined` to
+    // call `.length` on.
+    const base = createQueue()
+    const settings =
+      raw.settings && typeof raw.settings === 'object' && !Array.isArray(raw.settings)
+        ? raw.settings
+        : {}
 
-    return { ...createQueue(), ...rest, settings: { ...defaultSettings(), ...rest.settings } }
+    return {
+      ...base,
+      active: typeof raw.active === 'boolean' ? raw.active : base.active,
+      rotation: typeof raw.rotation === 'string' ? raw.rotation : base.rotation,
+      current: raw.current && typeof raw.current === 'object' ? raw.current : null,
+      items: Array.isArray(raw.items) ? raw.items : base.items,
+      played: Array.isArray(raw.played) ? raw.played : base.played,
+      settings: { ...base.settings, ...settings }
+    }
   } catch {
     return null
   }
