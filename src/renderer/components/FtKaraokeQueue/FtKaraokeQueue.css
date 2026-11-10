@@ -1,0 +1,61 @@
+.karaokeQueue {
+  inline-size: 100%;
+  margin-block-start: 12px;
+}
+
+.karaokeQueueCurrent {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  padding-block: 6px;
+}
+
+.karaokeQueueLabel {
+  font-size: 12px;
+  opacity: 0.7;
+  text-transform: uppercase;
+}
+
+.karaokeQueueList {
+  margin: 0;
+  padding-inline-start: 0;
+  list-style: none;
+}
+
+.karaokeQueueRow {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding-block: 6px;
+  border-block-end: 1px solid var(--card-bg-color, rgb(0 0 0 / 10%));
+}
+
+.karaokeQueueRow.isPriority {
+  font-weight: bold;
+}
+
+.karaokeQueuePosition {
+  min-inline-size: 1.5em;
+  opacity: 0.6;
+}
+
+.karaokeQueueTitle {
+  flex: 1;
+}
+
+.karaokeQueueBadge {
+  font-size: 11px;
+  padding-inline: 6px;
+  border-radius: 8px;
+  background-color: var(--primary-color, #4054b2);
+  color: var(--primary-color-text, #fff);
+}
+
+.karaokeQueueButton {
+  cursor: pointer;
+}
+
+.karaokeQueueEmpty {
+  opacity: 0.7;
+  padding-block: 8px;
+}
