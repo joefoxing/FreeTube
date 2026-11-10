@@ -54,6 +54,73 @@ export function buildState(meta, video, now) {
   }
 }
 
+export const UPCOMING_LIMIT = 20
+
+export const KARAOKE_COMMANDS = new Set([
+  'karaokeSet',
+  'queueAdd',
+  'queuePromote',
+  'queueRemove',
+  'queueClear',
+  'queueMove'
+])
+
+/**
+ * The fields a phone screen actually needs — a queue frame rides every queue change,
+ * so search-only metadata is dropped on the way out.
+ *
+ * @param {object} item
+ * @returns {object}
+ */
+export function queueItemForWire(item) {
+  return {
+    id: item.id,
+    videoId: item.videoId,
+    title: item.title,
+    channel: item.channel,
+    durationSeconds: item.durationSeconds,
+    thumbnail: item.thumbnail,
+    priority: Boolean(item.priority),
+    requester: item.requester
+  }
+}
+
+/**
+ * @param {object|null} karaoke the store's karaoke state
+ * @returns {object|null}
+ */
+export function buildQueueFrame(karaoke) {
+  if (!karaoke) return null
+
+  const items = Array.isArray(karaoke.items) ? karaoke.items : []
+
+  return {
+    active: Boolean(karaoke.active),
+    rotation: karaoke.rotation ?? 'fifo',
+    current: karaoke.current ? queueItemForWire(karaoke.current) : null,
+    upcoming: items.slice(0, UPCOMING_LIMIT).map(queueItemForWire),
+    priorityCount: items.filter(item => item.priority).length,
+    playedCount: Array.isArray(karaoke.played) ? karaoke.played.length : 0
+  }
+}
+
+/**
+ * @param {{cmd: string, [key: string]: any}} command
+ * @param {() => object|null} getKaraokeActions
+ * @returns {Promise<string|null>} an error code, or null when the command was applied
+ */
+export async function applyKaraokeCommand(command, getKaraokeActions) {
+  if (!KARAOKE_COMMANDS.has(command.cmd)) return 'E_UNKNOWN_CMD'
+
+  const action = getKaraokeActions?.()?.[command.cmd]
+
+  if (typeof action !== 'function') return 'E_NO_KARAOKE'
+
+  const result = await action(command)
+
+  return typeof result === 'string' ? result : null
+}
+
 async function play(video) {
   try {
     await video.play()
@@ -133,6 +200,8 @@ export function createRemoteAgent(options) {
     onPairCode = () => {},
     onStatus = () => {},
     getActions = () => null,
+    getKaraoke = () => null,
+    getKaraokeActions = () => null,
     navigate = videoId => { window.location.hash = `#/watch/${videoId}` },
     WebSocketImpl = globalThis.WebSocket,
     now = Date.now,
@@ -156,7 +225,18 @@ export function createRemoteAgent(options) {
 
   function publish() {
     const video = getVideo()
-    if (video) send({ t: 'state', state: buildState(getMeta(), video, now()) })
+    if (video) {
+      const karaoke = getKaraoke()
+      send({
+        t: 'state',
+        state: { ...buildState(getMeta(), video, now()), karaokeActive: Boolean(karaoke?.active) }
+      })
+    }
+  }
+
+  function publishQueue() {
+    const frame = buildQueueFrame(getKaraoke())
+    if (frame) send({ t: 'queue', karaoke: frame })
   }
 
   function attach(video) {
@@ -178,6 +258,14 @@ export function createRemoteAgent(options) {
   }
 
   async function onCommand(message) {
+    if (KARAOKE_COMMANDS.has(message.cmd)) {
+      const code = await applyKaraokeCommand(message, getKaraokeActions)
+      send({ t: 'ack', id: message.id, ok: code === null, ...(code ? { code } : {}) })
+      publishQueue()
+      publish()
+      return
+    }
+
     // 'open', 'next' and 'prev' are app actions, not media ones: the likeliest
     // moment to use them is with nothing playing, and the settings page has no
     // <video> element at all. Every other command needs the element.
@@ -232,6 +320,7 @@ export function createRemoteAgent(options) {
       detach = video ? attach(video) : null
       startTicker()
       publish()
+      publishQueue()
     }
     next.onmessage = onMessage
     next.onclose = () => {
@@ -264,6 +353,7 @@ export function createRemoteAgent(options) {
       send({ t: 'pair-close' })
     },
     publish,
+    publishQueue,
     get connected() {
       return socket?.readyState === WebSocketImpl.OPEN
     }

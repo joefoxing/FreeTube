@@ -124,7 +124,11 @@ import packageDetails from '../../package.json'
 import { openExternalLink, openInternalPath, showToast } from './helpers/utils'
 import { translateWindowTitle } from './helpers/strings'
 import { loadLocale } from './i18n/index'
-import { start as startRemoteControl, stop as stopRemoteControl } from './remote/index.js'
+import {
+  registerKaraoke,
+  start as startRemoteControl,
+  stop as stopRemoteControl
+} from './remote/index.js'
 import { getLocalClip } from './helpers/api/local.js'
 import { getClipInvidious } from './helpers/api/invidious.js'
 
@@ -236,6 +240,23 @@ watch(() => store.getters.getRemoteControlEnabled, enabled => {
   if (enabled) startRemoteControl(store.getters.getRemoteControlUrl)
   else stopRemoteControl()
 })
+
+/** The handlers a paired phone's queue commands land on. Each returns a code or null. */
+const karaokeActions = {
+  karaokeSet: payload => store.dispatch('karaokeSetActive', Boolean(payload?.active)),
+  // The phone's own room id (the bridge stamps it as `from`) is the requester: the queue's
+  // priority cap is per-requester, so dropping it would let one phone eat the whole allowance.
+  queueAdd: payload => store.dispatch('karaokeAdd', {
+    ...payload,
+    requester: payload?.from ?? payload?.requester
+  }),
+  queuePromote: payload => store.dispatch('karaokePromote', payload?.id),
+  queueRemove: payload => store.dispatch('karaokeRemove', payload?.id),
+  queueClear: () => store.dispatch('karaokeClear'),
+  queueMove: payload => store.dispatch('karaokeMove', { id: payload?.id, toIndex: payload?.toIndex })
+}
+
+watch(() => store.state.karaoke, karaoke => registerKaraoke(karaoke, karaokeActions), { deep: true, immediate: true })
 
 onBeforeUnmount(() => {
   stopRemoteControl()

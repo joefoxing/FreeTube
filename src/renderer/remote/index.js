@@ -8,6 +8,8 @@ let agent = null
 let videoRef = null
 let metaRef = () => ({})
 let actionsRef = null
+let karaokeRef = null
+let karaokeActionsRef = null
 let pairing = null
 const listeners = new Set()
 
@@ -48,6 +50,17 @@ export function qrUrl(pairUrl, code) {
   return `${pairUrl.split('#')[0]}qr/${code}.svg`
 }
 
+export function registerKaraoke(snapshot, actions) {
+  karaokeRef = snapshot
+  karaokeActionsRef = actions
+  agent?.publishQueue()
+}
+
+export function unregisterKaraoke() {
+  karaokeRef = null
+  karaokeActionsRef = null
+}
+
 export function start(url) {
   if (agent) return agent
   agent = createRemoteAgent({
@@ -56,6 +69,8 @@ export function start(url) {
     getVideo: () => videoRef,
     getMeta: () => metaRef(),
     getActions: () => actionsRef,
+    getKaraoke: () => karaokeRef,
+    getKaraokeActions: () => karaokeActionsRef,
     onStatus: () => emit(),
     onPairCode: (code, pairUrl) => {
       pairing = code ? { code, pairUrl, qr: qrUrl(pairUrl, code) } : null
