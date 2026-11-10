@@ -25,12 +25,13 @@
 }
 
 .pairQr {
-  width: 128px;
-  height: 128px;
+  inline-size: 128px;
+  block-size: 128px;
 }
 
 .pairHint {
-  margin: 0 12px 12px;
+  margin-block: 0 12px;
+  margin-inline: 12px;
   opacity: 0.7;
 }
 
