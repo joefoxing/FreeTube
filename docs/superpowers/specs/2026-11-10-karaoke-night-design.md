@@ -148,7 +148,7 @@ word for it, and the fairness cap below is what stops one singer monopolising it
   `from` hash, so the cap exists from the first shippable stage.
 - **Exhausted queue:** stop, and do not fall back to recommended videos — that is how non-karaoke
   leaks into a karaoke party.
-- Persistence: Vuex in memory, mirrored (debounced ~1 s) to a single `localStorage` key
+- Persistence: Vuex in memory, mirrored to a single `localStorage` key
   (`freetube-karaoke`), so a reload mid-party does not lose the queue. One key, not one per
   profile: switching profiles mid-party is not a case, and a party queue that disappears because
   the TV profile changed is a worse failure than a shared key. Queue persistence deliberately does
@@ -303,7 +303,8 @@ Bridge changes (the only Python in the feature):
 - Handler classes must be exported from `datastores/handlers/index.js` alongside the existing six,
   and from both `web.js` and `electron.js` (base classes are inherited as-is; the `Settings`
   wrapper is not used).
-- Queue and mode flag: `localStorage`, keyed by profile id (see §3). Not a datastore.
+- Queue and mode flag: a single `localStorage` key, `freetube-karaoke`, written synchronously on every
+  mutation (see §3). Not a datastore.
 
 ### 12. Settings and surfaces
 
