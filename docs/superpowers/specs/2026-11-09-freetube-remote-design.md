@@ -1,9 +1,9 @@
 # A phone web app that drives the FreeTube preview — pairing, transport, and a bridge
 
 **Date:** 2026-11-09
-**Status:** BUILT (Stages 1–3) — branch `freetube-remote` in the FreeTube checkout, bridge in
+**Status:** BUILT (Stages 1–4) — branch `freetube-remote` in the FreeTube checkout, bridge in
 `~/developer/freetube-remote`, live at `https://nextcloud.taild1347f.ts.net:10000/remote/`.
-Stage 4 remains designed only.
+All four stages are built and measured.
 Amended 2026-11-09: ingress moved from a tailnet-only Caddy vhost to **Tailscale Funnel**, because
 the phone must work with Tailscale off.
 **Repo:** `/home/joefox/developer/freetube` (renderer + settings), plus a new
@@ -383,6 +383,15 @@ video in 55.5 ms (runs: 56, 61, 64.6, 75.6 ms; contract ≤ 2 s); a malformed li
 acked `E_BAD_VIDEO_ID` and navigates nothing (mutations: drop `parseVideoId`'s final id test →
 the parser suite goes red; drop the agent's `VIDEO_ID` test → the bad-id test goes red).
 Evidence in the bridge repo's `docs/verification.md`.
+
+**Stage 4** — MEASURED 2026-11-10 on this host from the production bundle
+(`pnpm run pack`, then Electron under xvfb, driven over CDP): the renderer presents
+`Origin: app://bundle`, which the bridge refused 4403 until that origin was added to
+`FREETUBE_REMOTE_ALLOWED_ORIGINS` — no renderer change was needed, so the "backend split" the
+spec held in reserve was not. After that the row read Connected, a phone paired with the app,
+a pasted link navigated it, and — because the packaged app has a real media pipeline, unlike
+the web preview — pause/play, +10 s, volume 0.4, rate 1.5 and next were each read back from
+the app's own `<video>` (`readyState 4`, `paused`, `currentTime`, `volume`, `playbackRate`).
 
 **Stage 3** — MEASURED 2026-11-10: `GET /api/search` is `401 E_UNAUTHORIZED` without the phone
 token and returns 19 normalized results (absolute thumbnails) with it; the sheet renders them,
