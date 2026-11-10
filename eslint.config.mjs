@@ -387,6 +387,22 @@ export default defineConfig([
     },
   },
   {
+    // Locale files mark untranslated namespaces with `Key:` or `Key: {}`; that is the
+    // translation pipeline's convention, not an empty value to fix.
+    files: ['static/locales/**/*.{yml,yaml}'],
+
+    rules: {
+      'yml/no-empty-mapping-value': 'off',
+    },
+
+    settings: {
+      'vue-i18n': {
+        localeDir: `./static/locales/{${activeLocales.join(',')}}.yaml`,
+        messageSyntaxVersion: '^11.0.0',
+      },
+    },
+  },
+  {
     files: ['.github/**/*.{yml,yaml}'],
 
     rules: {
