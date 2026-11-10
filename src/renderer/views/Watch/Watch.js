@@ -1759,7 +1759,8 @@ export default defineComponent({
     handleVideoEnded: async function () {
       this.handleWatchProgressAutoSaveWhenProgressEnabled()
 
-      if (this.karaokeOwnsOrder && await this.karaokeAdvance()) {
+      if (this.karaokeOwnsOrder) {
+        await this.karaokeAdvance()
         return
       }
 
