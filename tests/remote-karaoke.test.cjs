@@ -77,3 +77,119 @@ test('queue commands reach the karaoke actions and a missing handler is refused'
   assert.equal(await applyKaraokeCommand({ cmd: 'queueClear' }, () => null), 'E_NO_KARAOKE')
   assert.equal(await applyKaraokeCommand({ cmd: 'notAKaraokeCommand' }, () => actions), 'E_UNKNOWN_CMD')
 })
+
+// The fake transport is the same shape tests/remote-agent-connection.test.cjs drives — this test
+// goes through the agent's real send path and the real karaoke reducer, not the pure builders.
+class FakeSocket {
+  static instances = []
+  static OPEN = 1
+  constructor(url) {
+    this.url = url
+    this.readyState = 0
+    this.sent = []
+    FakeSocket.instances.push(this)
+  }
+  send(payload) { this.sent.push(JSON.parse(payload)) }
+  close() { this.readyState = 3; this.onclose?.() }
+  open() { this.readyState = 1; this.onopen?.() }
+  receive(message) { this.onmessage?.({ data: JSON.stringify(message) }) }
+}
+
+const flush = () => new Promise(resolve => setImmediate(resolve))
+
+test('the agent sends its own queue frame, keeps the queue out of the state frame, and takes the requester from the bridge `from` alone', async () => {
+  const { createRemoteAgent } = await load()
+  const store = (await import('../src/renderer/store/modules/karaoke.js')).default
+
+  // A minimal Vuex context over the real karaoke module, so a command lands on the same
+  // reducer the app runs (`karaokeAdd` → `addItem(..., payload?.requester ?? 'local')`).
+  const state = store.state()
+  const commit = (type, payload) => store.mutations[type](state, payload)
+  const dispatch = (type, payload) => store.actions[type]({ state, commit }, payload)
+
+  // The action map the agent registers. `queueAdd` mirrors src/renderer/App.vue: identity comes
+  // from the bridge's `from` only, and with no `from` it stays undefined so the reducer default wins.
+  const karaokeActions = {
+    karaokeSet: payload => dispatch('karaokeSetActive', Boolean(payload?.active)),
+    queueAdd: payload => dispatch('karaokeAdd', { ...payload, requester: payload?.from }),
+    queuePromote: payload => dispatch('karaokePromote', payload?.id),
+    queueRemove: payload => dispatch('karaokeRemove', payload?.id),
+    queueClear: () => dispatch('karaokeClear'),
+    queueMove: payload => dispatch('karaokeMove', { id: payload?.id, toIndex: payload?.toIndex })
+  }
+
+  const video = new EventTarget()
+  Object.assign(video, { paused: true, currentTime: 0, duration: 100, volume: 1, muted: false, playbackRate: 1 })
+
+  FakeSocket.instances = []
+  const agent = createRemoteAgent({
+    url: 'wss://nextcloud.taild1347f.ts.net:10000/remote/ws',
+    deviceKey: 'device-key',
+    getVideo: () => video,
+    getMeta: () => ({ videoId: 'abc', title: 'T', channel: 'C', thumbnail: '' }),
+    getActions: () => null,
+    getKaraoke: () => state,
+    getKaraokeActions: () => karaokeActions,
+    WebSocketImpl: FakeSocket,
+    now: () => 1000,
+    setTimeoutImpl: () => 0,
+    clearTimeoutImpl: () => {},
+    setIntervalImpl: () => 0,
+    clearIntervalImpl: () => {}
+  })
+
+  agent.start()
+  const socket = FakeSocket.instances.at(-1)
+  socket.open()
+
+  // (a) opening publishes a dedicated queue frame...
+  const openQueues = socket.sent.filter(m => m.t === 'queue')
+  assert.equal(openQueues.length, 1, 'a {t:"queue"} frame is sent when the socket opens')
+  assert.deepEqual(openQueues[0].karaoke.upcoming, [])
+
+  // (b) ...and the 1 s state frame carries karaokeActive only — never the queue itself.
+  const openState = socket.sent.find(m => m.t === 'state')
+  assert.equal(openState.state.karaokeActive, false)
+  assert.equal('items' in openState.state, false)
+  assert.equal('upcoming' in openState.state, false)
+  assert.equal('karaoke' in openState.state, false)
+
+  socket.sent.length = 0
+
+  // (c) an inbound queueAdd carrying `from:'ph_x'` reaches the queue as requester 'ph_x'.
+  socket.receive({ t: 'cmd', id: 40, cmd: 'queueAdd', videoId: 'aaaaaaaaaaa', title: 'From a phone', from: 'ph_x' })
+  await flush()
+
+  const added = state.items.find(item => item.videoId === 'aaaaaaaaaaa')
+  assert.ok(added, 'the queueAdd command reached the queue')
+  assert.equal(added.requester, 'ph_x')
+
+  // The queue change pushed a fresh queue frame, and it is NOT inlined into the state frame.
+  const queued = socket.sent.filter(m => m.t === 'queue')
+  assert.equal(queued.length, 1, 'a queue frame rides the queue change')
+  assert.deepEqual(queued[0].karaoke.upcoming.map(item => [item.videoId, item.requester]), [['aaaaaaaaaaa', 'ph_x']])
+  const stateFrames = socket.sent.filter(m => m.t === 'state')
+  assert.ok(stateFrames.length >= 1, 'a state frame still rides the command')
+  for (const frame of stateFrames) {
+    assert.equal('items' in frame.state, false)
+    assert.equal('upcoming' in frame.state, false)
+  }
+  assert.ok(socket.sent.some(m => m.t === 'ack' && m.id === 40 && m.ok === true))
+
+  // A phone that sends its own `requester` but no `from` gets the queue's own default — never its
+  // own identity, never undefined.
+  socket.sent.length = 0
+  socket.receive({ t: 'cmd', id: 41, cmd: 'queueAdd', videoId: 'bbbbbbbbbbb', title: 'No from', requester: 'ph_evil' })
+  await flush()
+
+  const second = state.items.find(item => item.videoId === 'bbbbbbbbbbb')
+  assert.ok(second, 'the second queueAdd reached the queue')
+  assert.equal(second.requester, 'local')
+  assert.notEqual(second.requester, 'ph_evil')
+  assert.notEqual(second.requester, undefined)
+
+  const secondFrame = socket.sent.filter(m => m.t === 'queue').at(-1)
+  assert.equal(secondFrame.karaoke.upcoming.find(item => item.videoId === 'bbbbbbbbbbb').requester, 'local')
+
+  agent.stop()
+})

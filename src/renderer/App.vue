@@ -246,9 +246,11 @@ const karaokeActions = {
   karaokeSet: payload => store.dispatch('karaokeSetActive', Boolean(payload?.active)),
   // The phone's own room id (the bridge stamps it as `from`) is the requester: the queue's
   // priority cap is per-requester, so dropping it would let one phone eat the whole allowance.
+  // Identity comes ONLY from the bridge's `from`; a phone-supplied `requester` is ignored, and
+  // when there is no `from` the reducer's own default applies.
   queueAdd: payload => store.dispatch('karaokeAdd', {
     ...payload,
-    requester: payload?.from ?? payload?.requester
+    requester: payload?.from
   }),
   queuePromote: payload => store.dispatch('karaokePromote', payload?.id),
   queueRemove: payload => store.dispatch('karaokeRemove', payload?.id),
