@@ -7,6 +7,7 @@ import { createRemoteAgent, getDeviceKey } from './agent.js'
 let agent = null
 let videoRef = null
 let metaRef = () => ({})
+let actionsRef = null
 let pairing = null
 const listeners = new Set()
 
@@ -29,9 +30,10 @@ export function subscribe(listener) {
   return () => listeners.delete(listener)
 }
 
-export function registerPlayer(video, getMeta) {
+export function registerPlayer(video, getMeta, actions = null) {
   videoRef = video
   metaRef = getMeta
+  actionsRef = actions
   agent?.publish()
 }
 
@@ -39,6 +41,7 @@ export function unregisterPlayer(video) {
   if (videoRef !== video) return
   videoRef = null
   metaRef = () => ({})
+  actionsRef = null
 }
 
 export function qrUrl(pairUrl, code) {
@@ -52,6 +55,7 @@ export function start(url) {
     deviceKey: getDeviceKey(window.localStorage),
     getVideo: () => videoRef,
     getMeta: () => metaRef(),
+    getActions: () => actionsRef,
     onStatus: () => emit(),
     onPairCode: (code, pairUrl) => {
       pairing = code ? { code, pairUrl, qr: qrUrl(pairUrl, code) } : null

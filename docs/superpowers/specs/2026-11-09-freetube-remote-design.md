@@ -1,9 +1,9 @@
 # A phone web app that drives the FreeTube preview — pairing, transport, and a bridge
 
 **Date:** 2026-11-09
-**Status:** BUILT (Stages 1–2) — branch `freetube-remote` in the FreeTube checkout, bridge in
+**Status:** BUILT (Stages 1–3) — branch `freetube-remote` in the FreeTube checkout, bridge in
 `~/developer/freetube-remote`, live at `https://nextcloud.taild1347f.ts.net:10000/remote/`.
-Stages 3–4 remain designed only.
+Stage 4 remains designed only.
 Amended 2026-11-09: ingress moved from a tailnet-only Caddy vhost to **Tailscale Funnel**, because
 the phone must work with Tailscale off.
 **Repo:** `/home/joefox/developer/freetube` (renderer + settings), plus a new
@@ -383,6 +383,15 @@ video in 55.5 ms (runs: 56, 61, 64.6, 75.6 ms; contract ≤ 2 s); a malformed li
 acked `E_BAD_VIDEO_ID` and navigates nothing (mutations: drop `parseVideoId`'s final id test →
 the parser suite goes red; drop the agent's `VIDEO_ID` test → the bad-id test goes red).
 Evidence in the bridge repo's `docs/verification.md`.
+
+**Stage 3** — MEASURED 2026-11-10: `GET /api/search` is `401 E_UNAUTHORIZED` without the phone
+token and returns 19 normalized results (absolute thumbnails) with it; the sheet renders them,
+and tapping one moves the player to `#/watch/<id>` in 55.9 ms. **next** follows
+`handleSkipToNext` (`#/watch/LKrwhjOI8Nc` → `#/watch/mH0oCDa74tE` with no playlist, i.e. the
+autoplay branch); **prev** is a no-op without a playlist, as `handleSkipToPrev` defines. The
+mutation that matters: drop the token check in `/api/search` → the 401 test goes red, and the
+public Funnel would proxy Invidious for anyone.
+
 
 ## Cost
 

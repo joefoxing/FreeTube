@@ -3460,7 +3460,12 @@ export default defineComponent({
         title: props.title,
         channel: props.channelName,
         thumbnail: props.thumbnail
-      }))
+      }), {
+        // The same events the on-screen skip buttons emit, so playlist vs
+        // autoplay semantics stay in Watch.js.
+        next: () => emit('skip-to-next'),
+        prev: () => emit('skip-to-prev')
+      })
     })
 
     onBeforeUnmount(() => {

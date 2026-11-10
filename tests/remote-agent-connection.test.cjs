@@ -182,3 +182,40 @@ test('a playback command with no media element is still E_NO_PLAYER', async () =
     t: 'ack', id: 11, ok: false, code: 'E_NO_PLAYER'
   })
 })
+
+test('next and prev call the registered actions', async () => {
+  FakeSocket.instances = []
+  const calls = []
+  const video = new EventTarget()
+  Object.assign(video, { paused: true, currentTime: 0, duration: 100, volume: 1, muted: false, playbackRate: 1 })
+  const agent = await makeAgent({
+    video,
+    getActions: () => ({ next: () => calls.push('next'), prev: () => calls.push('prev') })
+  })
+  agent.start()
+  const socket = FakeSocket.instances.at(-1)
+  socket.open()
+  socket.sent.length = 0
+  socket.receive({ t: 'cmd', id: 20, cmd: 'next' })
+  socket.receive({ t: 'cmd', id: 21, cmd: 'prev' })
+  await new Promise(resolve => setImmediate(resolve))
+  assert.deepEqual(calls, ['next', 'prev'])
+  assert.deepEqual(socket.sent.filter(m => m.t === 'ack'), [
+    { t: 'ack', id: 20, ok: true },
+    { t: 'ack', id: 21, ok: true }
+  ])
+})
+
+test('next without a player element is E_NO_PLAYER', async () => {
+  FakeSocket.instances = []
+  const agent = await makeAgent()
+  agent.start()
+  const socket = FakeSocket.instances.at(-1)
+  socket.open()
+  socket.sent.length = 0
+  socket.receive({ t: 'cmd', id: 22, cmd: 'next' })
+  await new Promise(resolve => setImmediate(resolve))
+  assert.deepEqual(socket.sent.find(m => m.t === 'ack'), {
+    t: 'ack', id: 22, ok: false, code: 'E_NO_PLAYER'
+  })
+})

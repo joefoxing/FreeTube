@@ -132,6 +132,7 @@ export function createRemoteAgent(options) {
     getMeta,
     onPairCode = () => {},
     onStatus = () => {},
+    getActions = () => null,
     navigate = videoId => { window.location.hash = `#/watch/${videoId}` },
     WebSocketImpl = globalThis.WebSocket,
     now = Date.now,
@@ -177,12 +178,22 @@ export function createRemoteAgent(options) {
   }
 
   async function onCommand(message) {
-    // 'open' is a navigation request, not a media one: the likeliest moment to
-    // paste a link is while nothing is playing, and the settings page has no
+    // 'open', 'next' and 'prev' are app actions, not media ones: the likeliest
+    // moment to use them is with nothing playing, and the settings page has no
     // <video> element at all. Every other command needs the element.
     if (message.cmd === 'open') {
       const code = await applyCommand(message, null, { navigate })
       send({ t: 'ack', id: message.id, ok: code === null, ...(code ? { code } : {}) })
+      return
+    }
+    if (message.cmd === 'next' || message.cmd === 'prev') {
+      const action = getActions()?.[message.cmd]
+      if (typeof action !== 'function') {
+        send({ t: 'ack', id: message.id, ok: false, code: 'E_NO_PLAYER' })
+        return
+      }
+      action()
+      send({ t: 'ack', id: message.id, ok: true })
       return
     }
     const video = getVideo()
