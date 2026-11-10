@@ -289,6 +289,13 @@ export default defineComponent({
       return this.karaokeActive && (this.karaokeUpcoming.length > 0 || this.$store.getters.getKaraokeCurrent !== null)
     },
 
+    // Spec §7: a playlist watch does not survive karaoke mode. When the queue owns
+    // next/prev on a page reached from a playlist, say so and offer the way out —
+    // two competing orderings on one screen is a bug with no error.
+    showKaraokePlaylistNotice: function () {
+      return this.watchingPlaylist && this.karaokeActive && this.karaokeUpcoming.length > 0
+    },
+
     thumbnailPreference: function () {
       return this.$store.getters.getThumbnailPreference
     },
@@ -1833,6 +1840,12 @@ export default defineComponent({
     playKaraokeItem: function (item) {
       this.$store.dispatch('karaokeStart', item.id)
       this.$router.push({ path: `/watch/${item.videoId}` })
+    },
+
+    // The one action that leaves the mode, the same one the /karaoke view's leave button
+    // dispatches: order returns to the playlist the page was reached from.
+    leaveKaraokeMode: function () {
+      this.$store.dispatch('karaokeSetActive', false)
     },
 
     /**

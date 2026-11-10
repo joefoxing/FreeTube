@@ -187,3 +187,59 @@ test('the agent sends its own queue frame, keeps the queue out of the state fram
 
   agent.stop()
 })
+
+// The bridge stamps its own command-correlation id (`id`) — a monotonic counter — onto every
+// relayed command, next to `t`, `cmd` and `from`. None of those is a queue-item field, and `id`
+// must never become a row id: rows are matched by id in remove/promote/move and keyed by id in the
+// queue panel, so two phones whose commands share a counter value would collide. A row id is
+// always the reducer's own generated value.
+test('a phone-added row never takes the bridge command id as its row id', async () => {
+  const { createRemoteAgent } = await load()
+  const { createKaraokeActions } = await import('../src/renderer/remote/karaoke-actions.js')
+  const store = (await import('../src/renderer/store/modules/karaoke.js')).default
+
+  const state = store.state()
+  const commit = (type, payload) => store.mutations[type](state, payload)
+  const dispatch = (type, payload) => store.actions[type]({ state, commit }, payload)
+
+  const video = new EventTarget()
+  Object.assign(video, { paused: true, currentTime: 0, duration: 100, volume: 1, muted: false, playbackRate: 1 })
+
+  FakeSocket.instances = []
+  const agent = createRemoteAgent({
+    url: 'wss://nextcloud.taild1347f.ts.net:10000/remote/ws',
+    deviceKey: 'device-key',
+    getVideo: () => video,
+    getMeta: () => ({ videoId: 'abc', title: 'T', channel: 'C', thumbnail: '' }),
+    getActions: () => null,
+    getKaraoke: () => state,
+    getKaraokeActions: () => createKaraokeActions({ dispatch }),
+    WebSocketImpl: FakeSocket,
+    now: () => 1000,
+    setTimeoutImpl: () => 0,
+    clearTimeoutImpl: () => {},
+    setIntervalImpl: () => 0,
+    clearIntervalImpl: () => {}
+  })
+
+  agent.start()
+  const socket = FakeSocket.instances.at(-1)
+  socket.open()
+
+  // Two commands the bridge relayed with the SAME correlation id (it is the bridge's counter,
+  // not anything the queue knows), both stamped `from`.
+  socket.receive({ t: 'cmd', id: 7, cmd: 'queueAdd', videoId: 'aaaaaaaaaaa', title: 'A', from: 'ph_1' })
+  await flush()
+  socket.receive({ t: 'cmd', id: 7, cmd: 'queueAdd', videoId: 'bbbbbbbbbbb', title: 'B', from: 'ph_1' })
+  await flush()
+
+  const a = state.items.find(item => item.videoId === 'aaaaaaaaaaa')
+  const b = state.items.find(item => item.videoId === 'bbbbbbbbbbb')
+
+  assert.ok(a && b, 'both commands reached the queue')
+  assert.notEqual(a.id, 7, 'the row id is the reducer-generated value, not the bridge command id')
+  assert.notEqual(b.id, 7)
+  assert.notEqual(a.id, b.id, 'two commands sharing one wire id still mint two distinct row ids')
+
+  agent.stop()
+})

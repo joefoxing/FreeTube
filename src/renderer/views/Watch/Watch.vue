@@ -61,6 +61,21 @@
           @player-reload-requested="onSabrReloadRequested"
           @transcribe="handleTranscribe"
         />
+        <div
+          v-if="showKaraokePlaylistNotice"
+          class="karaokePlaylistNotice"
+        >
+          <span class="karaokePlaylistNoticeText">
+            {{ $t("Karaoke.Playlist Notice") }}
+          </span>
+          <button
+            class="karaokePlaylistNoticeLeave"
+            type="button"
+            @click="leaveKaraokeMode"
+          >
+            {{ $t("Karaoke.Leave Karaoke Mode") }}
+          </button>
+        </div>
         <FtKaraokeQueue
           v-if="karaokeActive"
           class="karaokeQueueBar"
