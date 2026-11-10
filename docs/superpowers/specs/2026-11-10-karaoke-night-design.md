@@ -1,7 +1,7 @@
 # Karaoke Night — a karaoke mode, a fair queue, singers, voting, and a score
 
 **Date:** 2026-11-10
-**Status:** PROPOSED — design approved in conversation; no code written.
+**Status:** P1 BUILT — `00cbeab51`; renderer 98 tests, bridge 43 + 3; evidence in the plan's Task 9.
 **Repo:** `/home/joefox/developer/freetube` (renderer, router, stores, remote agent) and
 `/home/joefox/developer/freetube-remote` (bridge + phone PWA).
 **Builds on:** `2026-11-09-freetube-remote-design.md` — the pairing, relay and phone PWA this
