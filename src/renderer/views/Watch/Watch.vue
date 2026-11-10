@@ -61,6 +61,12 @@
           @player-reload-requested="onSabrReloadRequested"
           @transcribe="handleTranscribe"
         />
+        <FtKaraokeQueue
+          v-if="karaokeActive"
+          class="karaokeQueueBar"
+          compact
+          @play="playKaraokeItem"
+        />
         <ft-transcript
           :visible="transcriptVisible"
           :state="transcriptState"
