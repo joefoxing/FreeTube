@@ -80,6 +80,9 @@ test('queue commands reach the karaoke actions and a missing handler is refused'
 
 // The fake transport is the same shape tests/remote-agent-connection.test.cjs drives — this test
 // goes through the agent's real send path and the real karaoke reducer, not the pure builders.
+// The state frame's exact key set, so an extra key (e.g. a queue inlined under a new name) fails.
+const STATE_FRAME_KEYS = ['at', 'channel', 'duration', 'karaokeActive', 'muted', 'playing', 'position', 'rate', 'thumbnail', 'title', 'videoId', 'volume'].sort()
+
 class FakeSocket {
   static instances = []
   static OPEN = 1
@@ -99,6 +102,9 @@ const flush = () => new Promise(resolve => setImmediate(resolve))
 
 test('the agent sends its own queue frame, keeps the queue out of the state frame, and takes the requester from the bridge `from` alone', async () => {
   const { createRemoteAgent } = await load()
+  // The action map the agent registers is the REAL one App.vue builds, imported from its own
+  // module — not a copy re-declared here, so a regression inside it fails this test.
+  const { createKaraokeActions } = await import('../src/renderer/remote/karaoke-actions.js')
   const store = (await import('../src/renderer/store/modules/karaoke.js')).default
 
   // A minimal Vuex context over the real karaoke module, so a command lands on the same
@@ -107,16 +113,7 @@ test('the agent sends its own queue frame, keeps the queue out of the state fram
   const commit = (type, payload) => store.mutations[type](state, payload)
   const dispatch = (type, payload) => store.actions[type]({ state, commit }, payload)
 
-  // The action map the agent registers. `queueAdd` mirrors src/renderer/App.vue: identity comes
-  // from the bridge's `from` only, and with no `from` it stays undefined so the reducer default wins.
-  const karaokeActions = {
-    karaokeSet: payload => dispatch('karaokeSetActive', Boolean(payload?.active)),
-    queueAdd: payload => dispatch('karaokeAdd', { ...payload, requester: payload?.from }),
-    queuePromote: payload => dispatch('karaokePromote', payload?.id),
-    queueRemove: payload => dispatch('karaokeRemove', payload?.id),
-    queueClear: () => dispatch('karaokeClear'),
-    queueMove: payload => dispatch('karaokeMove', { id: payload?.id, toIndex: payload?.toIndex })
-  }
+  const karaokeActions = createKaraokeActions({ dispatch })
 
   const video = new EventTarget()
   Object.assign(video, { paused: true, currentTime: 0, duration: 100, volume: 1, muted: false, playbackRate: 1 })
@@ -150,9 +147,7 @@ test('the agent sends its own queue frame, keeps the queue out of the state fram
   // (b) ...and the 1 s state frame carries karaokeActive only — never the queue itself.
   const openState = socket.sent.find(m => m.t === 'state')
   assert.equal(openState.state.karaokeActive, false)
-  assert.equal('items' in openState.state, false)
-  assert.equal('upcoming' in openState.state, false)
-  assert.equal('karaoke' in openState.state, false)
+  assert.deepEqual(Object.keys(openState.state).sort(), STATE_FRAME_KEYS, 'the state frame carries karaokeActive and nothing queue-shaped')
 
   socket.sent.length = 0
 
@@ -171,8 +166,7 @@ test('the agent sends its own queue frame, keeps the queue out of the state fram
   const stateFrames = socket.sent.filter(m => m.t === 'state')
   assert.ok(stateFrames.length >= 1, 'a state frame still rides the command')
   for (const frame of stateFrames) {
-    assert.equal('items' in frame.state, false)
-    assert.equal('upcoming' in frame.state, false)
+    assert.deepEqual(Object.keys(frame.state).sort(), STATE_FRAME_KEYS, 'the state frame carries karaokeActive and nothing queue-shaped')
   }
   assert.ok(socket.sent.some(m => m.t === 'ack' && m.id === 40 && m.ok === true))
 
