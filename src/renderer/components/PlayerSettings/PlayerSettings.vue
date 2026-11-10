@@ -331,7 +331,10 @@
           : t('Settings.Player Settings.Remote.Not Connected') }}
       </span>
     </FtFlexBox>
-    <div v-if="remoteControlEnabled" class="remoteControls">
+    <div
+      v-if="remoteControlEnabled"
+      class="remoteControls"
+    >
       <FtFlexBox class="screenshotFolderContainer">
         <p class="screenshotFilenamePatternTitle">
           {{ t('Settings.Player Settings.Remote.Bridge') }}
@@ -350,10 +353,21 @@
           :label="t('Settings.Player Settings.Remote.Pair')"
           @click="pairPhone"
         />
-        <span v-if="pairing" class="pairCode">{{ pairing.code }}</span>
-        <img v-if="pairing" :src="pairing.qr" class="pairQr" alt="">
+        <span
+          v-if="pairing"
+          class="pairCode"
+        >{{ pairing.code }}</span>
+        <img
+          v-if="pairing"
+          :src="pairing.qr"
+          class="pairQr"
+          alt=""
+        >
       </FtFlexBox>
-      <p v-if="pairing" class="pairHint">
+      <p
+        v-if="pairing"
+        class="pairHint"
+      >
         {{ t('Settings.Player Settings.Remote.Hint') }}
       </p>
     </div>
@@ -802,7 +816,6 @@ const transcriptionServiceUrl = computed(() => store.getters.getTranscriptionSer
 
 /** @type {import('vue').ComputedRef<string>} */
 const transcriptionToken = computed(() => store.getters.getTranscriptionToken)
-
 
 /** @type {import('vue').ComputedRef<boolean>} */
 const remoteControlEnabled = computed(() => store.getters.getRemoteControlEnabled)
