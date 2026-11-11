@@ -1,8 +1,11 @@
 name: Tests
 
+# A fork's branches are snapshots of local work and get whatever names the
+# snapshot needs, so `push` is unfiltered on purpose: the suite installs nothing
+# and takes ~30s, and a branch whose only real home is the fork should still be
+# tested. Pull requests stay limited to the branches that matter.
 on:
   push:
-    branches: [ development, master ]
   pull_request:
     branches: [ development, master, '**-RC' ]
   workflow_dispatch:
