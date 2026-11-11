@@ -310,6 +310,77 @@ test('an add from an unclaimed phone falls back to the bridge phone id', async (
   assert.equal(calls[0].payload.requester, 'ph_z')
 })
 
+// --- only the host may destroy the queue --------------------------------------------
+//
+// The command map's contract is "each handler returning a code or null", and a non-null code
+// becomes a NACK, so a refused clear reaches the phone as a failure exactly like a rejected
+// singer claim. Clearing the queue is the one queue-wide, destructive command, so it is
+// host-only: a paired phone whose claimed singer is not the host must not be able to empty
+// everyone's queue.
+
+// A fake store in the shape the other action-map cases use, wired to resolve the sender's
+// claimed singer from the roster — a claim binds the bridge phone id (`from`) to a roster row.
+function hostGateStore(roster) {
+  const calls = []
+  return {
+    calls,
+    store: {
+      state: { singers: { roster } },
+      getters: { getSingerByPhone: phoneId => roster.find(singer => singer.phoneId === phoneId) ?? null },
+      dispatch: (type, payload) => { calls.push({ type, payload }); return null }
+    }
+  }
+}
+
+test('a clear from a non-host singer is refused E_NOT_HOST and dispatches nothing', async () => {
+  const { createKaraokeActions } = await loadActions()
+  const { createRoster, claimSinger } = await loadRoster()
+
+  // Ada claims first and so holds the host row; Grace is an ordinary singer on her own phone.
+  let roster = claimSinger(createRoster(), { name: 'Ada', phoneId: 'ph_host' }).roster
+  roster = claimSinger(roster, { name: 'Grace', phoneId: 'ph_guest' }).roster
+  assert.equal(roster[1].host, false, 'the second claimant is not the host')
+
+  const { calls, store } = hostGateStore(roster)
+  const actions = createKaraokeActions(store)
+
+  const code = await actions.queueClear({ from: 'ph_guest' })
+
+  assert.equal(code, 'E_NOT_HOST', 'a non-host phone is refused with the host-gate code')
+  assert.equal(calls.length, 0, 'a refused clear dispatches nothing at all')
+})
+
+test('a clear from an unclaimed phone is refused E_NOT_HOST and dispatches nothing', async () => {
+  const { createKaraokeActions } = await loadActions()
+  const { createRoster, claimSinger } = await loadRoster()
+
+  const roster = claimSinger(createRoster(), { name: 'Ada', phoneId: 'ph_host' }).roster
+  const { calls, store } = hostGateStore(roster)
+  const actions = createKaraokeActions(store)
+
+  const code = await actions.queueClear({ from: 'ph_stranger' })
+
+  assert.equal(code, 'E_NOT_HOST', 'a phone that claimed no singer has no host standing')
+  assert.equal(calls.length, 0, 'a refused clear dispatches nothing at all')
+})
+
+test('a clear from the host singer dispatches karaokeClear and reports its code', async () => {
+  const { createKaraokeActions } = await loadActions()
+  const { createRoster, claimSinger } = await loadRoster()
+
+  const roster = claimSinger(createRoster(), { name: 'Ada', phoneId: 'ph_host' }).roster
+  assert.equal(roster[0].host, true, 'the first claimant holds the host row')
+
+  const { calls, store } = hostGateStore(roster)
+  const actions = createKaraokeActions(store)
+
+  const code = await actions.queueClear({ from: 'ph_host' })
+
+  assert.equal(calls.length, 1, 'the host clear reaches the store')
+  assert.equal(calls[0].type, 'karaokeClear', 'the host clear runs the karaokeClear action')
+  assert.equal(code, null, 'a host clear reports no refusal code')
+})
+
 test('the queue frame carries the roster but never inside the state frame', async () => {
   const { createRemoteAgent } = await load()
   const { createRoster, claimSinger } = await loadRoster()

@@ -75,7 +75,18 @@ export function createKaraokeActions(store) {
     // The row to act on travels in `itemId`, never in the reserved `id`.
     queuePromote: payload => store.dispatch('karaokePromote', payload?.itemId),
     queueRemove: payload => store.dispatch('karaokeRemove', payload?.itemId),
-    queueClear: () => store.dispatch('karaokeClear'),
+    // Clearing the queue is the one queue-wide, destructive command, so it is host-only: the
+    // sending phone's claimed singer (resolved exactly as `queueAdd` resolves it, from the
+    // bridge-stamped `from`) must hold the host row. A non-host — or a phone that claimed
+    // nothing — is refused with a code and NOTHING is dispatched, so the ack reports the
+    // failure instead of silently emptying everyone's queue.
+    queueClear: payload => {
+      const singer = store.getters?.getSingerByPhone?.(payload?.from) ?? null
+
+      if (!singer?.host) return 'E_NOT_HOST'
+
+      return store.dispatch('karaokeClear')
+    },
     queueMove: payload => store.dispatch('karaokeMove', { id: payload?.itemId, toIndex: payload?.toIndex })
   }
 }
