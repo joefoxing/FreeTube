@@ -423,6 +423,7 @@ function loadDatastores() {
     db.history.loadDatabaseAsync(),
     db.profiles.loadDatabaseAsync(),
     db.playlists.loadDatabaseAsync(),
+    db.karaoke.loadDatabaseAsync(),
     db.searchHistory.loadDatabaseAsync(),
     db.subscriptionCache.loadDatabaseAsync(),
   ])
@@ -434,6 +435,7 @@ function compactAllDatastores() {
     db.history.compactDatafileAsync(),
     db.profiles.compactDatafileAsync(),
     db.playlists.compactDatafileAsync(),
+    db.karaoke.compactDatafileAsync(),
     db.searchHistory.compactDatafileAsync(),
     db.subscriptionCache.compactDatafileAsync(),
   ])
