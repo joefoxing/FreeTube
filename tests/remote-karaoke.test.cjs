@@ -408,10 +408,12 @@ test('a singer moves its own row and the move reaches karaokeMove', async () => 
   const { createKaraokeActions } = await loadActions()
   const { createRoster, claimSinger } = await loadRoster()
 
-  const roster = claimSinger(createRoster(), { name: 'Grace', phoneId: 'ph_guest' }).roster
+  let roster = claimSinger(createRoster(), { name: 'Ada', phoneId: 'ph_host' }).roster
+  roster = claimSinger(roster, { name: 'Grace', phoneId: 'ph_guest' }).roster
+  assert.equal(roster[1].host, false, 'a second claimant is not the host, so ownership is the rule under test')
   const items = [
-    { id: 'k_1', title: 'A', singerId: roster[0].id },
-    { id: 'k_2', title: 'B', singerId: 's_someone_else' }
+    { id: 'k_1', title: 'A', singerId: roster[1].id },
+    { id: 'k_2', title: 'B', singerId: roster[0].id }
   ]
   const { calls, store } = moveGateStore(roster, items)
   const actions = createKaraokeActions(store)
@@ -432,9 +434,10 @@ test("moving another singer's row without being host is refused E_NOT_YOURS and 
   const { createKaraokeActions } = await loadActions()
   const { createRoster, claimSinger } = await loadRoster()
 
-  const roster = claimSinger(createRoster(), { name: 'Grace', phoneId: 'ph_guest' }).roster
-  assert.equal(roster[0].host, false, 'the sole claimant is only the host if the roster says so')
-  const items = [{ id: 'k_1', title: 'A', singerId: 's_someone_else' }]
+  let roster = claimSinger(createRoster(), { name: 'Ada', phoneId: 'ph_host' }).roster
+  roster = claimSinger(roster, { name: 'Grace', phoneId: 'ph_guest' }).roster
+  assert.equal(roster[1].host, false, 'Grace is not the host, so this is the ownership rule and not a host move')
+  const items = [{ id: 'k_1', title: 'A', singerId: roster[0].id }]
   const { calls, store } = moveGateStore(roster, items)
   const actions = createKaraokeActions(store)
 
@@ -448,8 +451,9 @@ test('an unclaimed phone cannot move any row', async () => {
   const { createKaraokeActions } = await loadActions()
   const { createRoster, claimSinger } = await loadRoster()
 
-  const roster = claimSinger(createRoster(), { name: 'Grace', phoneId: 'ph_guest' }).roster
-  const items = [{ id: 'k_1', title: 'A', singerId: roster[0].id }]
+  let roster = claimSinger(createRoster(), { name: 'Ada', phoneId: 'ph_host' }).roster
+  roster = claimSinger(roster, { name: 'Grace', phoneId: 'ph_guest' }).roster
+  const items = [{ id: 'k_1', title: 'A', singerId: roster[1].id }]
   const { calls, store } = moveGateStore(roster, items)
   const actions = createKaraokeActions(store)
 
