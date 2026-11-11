@@ -11,6 +11,7 @@ import {
   removeItem,
   serializeQueue,
   setActive,
+  setRotation,
   setSettings,
   startItem
 } from '../../helpers/karaoke-queue.js'
@@ -55,6 +56,9 @@ function snapshot(state) {
   return {
     active: state.active,
     rotation: state.rotation,
+    // The round-robin cursor lives here too: completeCurrent advances it, and dropping it
+    // from the snapshot would make every commit snap it back and stall the rotation.
+    lastSingerId: state.lastSingerId ?? null,
     current: state.current,
     items: state.items,
     played: state.played,
@@ -69,7 +73,9 @@ export default {
     getKaraokeCurrent: state => state.current,
     getKaraokeUpcoming: state => state.items,
     getKaraokeQueue: state => snapshot(state),
-    getKaraokeNext: state => pickNext(state),
+    getKaraokeNext: (state, getters, rootState, rootGetters) =>
+      pickNext(state, { rotation: state.rotation, roster: rootGetters?.getSingers ?? [] }),
+    getKaraokeRotation: state => state.rotation,
     getKaraokePriorityCount: state => state.items.filter(item => item.priority).length
   },
   mutations: {
@@ -87,6 +93,7 @@ export default {
     setKaraokeQueue(state, queue) {
       state.active = queue.active
       state.rotation = queue.rotation
+      state.lastSingerId = queue.lastSingerId ?? null
       state.current = queue.current
       state.items = queue.items
       state.played = queue.played
@@ -114,9 +121,25 @@ export default {
       persist(queue)
       return code
     },
-    /** @returns {string|null} a CODES value, or null when the item was queued */
-    karaokeAdd({ state, commit }, payload) {
-      const { queue, code } = addItem(snapshot(state), payload, payload?.requester ?? 'local')
+    /**
+     * The phone's identity resolves to the singer it claimed before the reducer counts the
+     * priority cap: the cap is per-singer, not per-phone, so re-pairing must not buy a second
+     * allowance. A phone with no claimed row (or an add that names `singerId` directly) keeps the
+     * bridge's opaque `from` as its identity; a TV-local add stays `local`.
+     *
+     * @param {object} context
+     * @param {object} context.state
+     * @param {object} context.commit
+     * @param {object} [context.rootGetters]
+     * @param {object} payload
+     * @returns {string|null} a CODES value, or null when the item was queued
+     */
+    karaokeAdd({ state, commit, rootGetters }, payload) {
+      const phoneId = payload?.requester ?? null
+      const claimed = phoneId ? rootGetters?.getSingerByPhone?.(phoneId) : null
+      const singerId = payload?.singerId ?? claimed?.id ?? null
+      const requester = singerId ?? phoneId ?? 'local'
+      const { queue, code } = addItem(snapshot(state), { ...payload, singerId, requester }, requester)
       commit('setKaraokeQueue', queue)
       persist(queue)
       return code
@@ -185,6 +208,23 @@ export default {
       const { queue, code } = setSettings(snapshot(state), partial ?? {})
       commit('setKaraokeQueue', queue)
       persist(queue)
+      return code
+    },
+    /**
+     * @param {object} context
+     * @param {object} context.state
+     * @param {object} context.commit
+     * @param {string} rotation
+     * @returns {string|null} a code or null
+     */
+    karaokeSetRotation({ state, commit }, rotation) {
+      const { queue, code } = setRotation(snapshot(state), rotation)
+
+      if (code === null) {
+        commit('setKaraokeQueue', queue)
+        persist(queue)
+      }
+
       return code
     }
   }

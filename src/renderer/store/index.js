@@ -8,6 +8,7 @@ import playlists from './modules/playlists'
 import profiles from './modules/profiles'
 import settings from './modules/settings'
 import searchHistory from './modules/search-history'
+import singers from './modules/singers'
 import subscriptionCache from './modules/subscription-cache'
 import utils from './modules/utils'
 import player from './modules/player'
@@ -21,6 +22,7 @@ export default createStore({
     profiles,
     settings,
     searchHistory,
+    singers,
     subscriptionCache,
     utils,
     player,
