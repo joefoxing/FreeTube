@@ -381,6 +381,103 @@ test('a clear from the host singer dispatches karaokeClear and reports its code'
   assert.equal(code, null, 'a host clear reports no refusal code')
 })
 
+// --- a move is your own song, or any song if you are the host -----------------------
+//
+// The spec's command table: `queueMove | { itemId, toIndex } | own songs only, unless the sender is
+// the host`. Ownership is decided from the bridge-stamped `from` resolved to a roster row (never from
+// the payload) and from the `singerId` recorded on the queue row, so a phone cannot move another
+// phone's song by claiming to be its owner, and cannot move anyone's song without claiming first.
+
+// A fake store in the shape `hostGateStore` uses, plus the queue the move must resolve the row from.
+function moveGateStore(roster, items) {
+  const calls = []
+  return {
+    calls,
+    store: {
+      state: { singers: { roster } },
+      getters: {
+        getSingerByPhone: phoneId => roster.find(singer => singer.phoneId === phoneId) ?? null,
+        getKaraokeUpcoming: items
+      },
+      dispatch: (type, payload) => { calls.push({ type, payload }); return null }
+    }
+  }
+}
+
+test('a singer moves its own row and the move reaches karaokeMove', async () => {
+  const { createKaraokeActions } = await loadActions()
+  const { createRoster, claimSinger } = await loadRoster()
+
+  const roster = claimSinger(createRoster(), { name: 'Grace', phoneId: 'ph_guest' }).roster
+  const items = [
+    { id: 'k_1', title: 'A', singerId: roster[0].id },
+    { id: 'k_2', title: 'B', singerId: 's_someone_else' }
+  ]
+  const { calls, store } = moveGateStore(roster, items)
+  const actions = createKaraokeActions(store)
+
+  const code = await actions.queueMove({ from: 'ph_guest', itemId: 'k_1', toIndex: 1 })
+
+  assert.equal(code, null, 'an own-row move reports no refusal code')
+  assert.equal(calls.length, 1, 'the move reaches the store')
+  assert.equal(calls[0].type, 'karaokeMove', 'the move runs the karaokeMove action')
+  assert.deepEqual(
+    calls[0].payload,
+    { id: 'k_1', toIndex: 1 },
+    'the row and the target index cross to the store, and nothing else does'
+  )
+})
+
+test("moving another singer's row without being host is refused E_NOT_YOURS and dispatches nothing", async () => {
+  const { createKaraokeActions } = await loadActions()
+  const { createRoster, claimSinger } = await loadRoster()
+
+  const roster = claimSinger(createRoster(), { name: 'Grace', phoneId: 'ph_guest' }).roster
+  assert.equal(roster[0].host, false, 'the sole claimant is only the host if the roster says so')
+  const items = [{ id: 'k_1', title: 'A', singerId: 's_someone_else' }]
+  const { calls, store } = moveGateStore(roster, items)
+  const actions = createKaraokeActions(store)
+
+  const code = await actions.queueMove({ from: 'ph_guest', itemId: 'k_1', toIndex: 0 })
+
+  assert.equal(code, 'E_NOT_YOURS', "another singer's row is refused with the ownership code")
+  assert.equal(calls.length, 0, 'a refused move dispatches nothing at all')
+})
+
+test('an unclaimed phone cannot move any row', async () => {
+  const { createKaraokeActions } = await loadActions()
+  const { createRoster, claimSinger } = await loadRoster()
+
+  const roster = claimSinger(createRoster(), { name: 'Grace', phoneId: 'ph_guest' }).roster
+  const items = [{ id: 'k_1', title: 'A', singerId: roster[0].id }]
+  const { calls, store } = moveGateStore(roster, items)
+  const actions = createKaraokeActions(store)
+
+  // The row is Grace's, but `ph_stranger` never claimed her: standing comes from the claim, so a
+  // phone cannot reach someone else's row merely by knowing the id.
+  const code = await actions.queueMove({ from: 'ph_stranger', itemId: 'k_1', toIndex: 0 })
+
+  assert.equal(code, 'E_NOT_YOURS', 'no claim means no ownership however the row is named')
+  assert.equal(calls.length, 0, 'a refused move dispatches nothing at all')
+})
+
+test('the host may move any row', async () => {
+  const { createKaraokeActions } = await loadActions()
+  const { createRoster, claimSinger } = await loadRoster()
+
+  let roster = claimSinger(createRoster(), { name: 'Ada', phoneId: 'ph_host' }).roster
+  roster = claimSinger(roster, { name: 'Grace', phoneId: 'ph_guest' }).roster
+  assert.equal(roster[0].host, true, 'the first claimant holds the host row')
+  const items = [{ id: 'k_1', title: 'A', singerId: roster[1].id }]
+  const { calls, store } = moveGateStore(roster, items)
+  const actions = createKaraokeActions(store)
+
+  const code = await actions.queueMove({ from: 'ph_host', itemId: 'k_1', toIndex: 0 })
+
+  assert.equal(code, null, 'the host is not refused')
+  assert.equal(calls.length, 1, "the host's move of another singer's row reaches the store")
+})
+
 test('the queue frame carries the roster but never inside the state frame', async () => {
   const { createRemoteAgent } = await load()
   const { createRoster, claimSinger } = await loadRoster()

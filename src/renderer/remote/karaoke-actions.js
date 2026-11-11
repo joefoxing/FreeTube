@@ -87,7 +87,20 @@ export function createKaraokeActions(store) {
 
       return store.dispatch('karaokeClear')
     },
-    queueMove: payload => store.dispatch('karaokeMove', { id: payload?.itemId, toIndex: payload?.toIndex }),
+    // A move is your own song, or any song if you hold the host row — the spec's command table says
+    // exactly that (`own songs only, unless the sender is the host`). Both halves of the decision come
+    // from things the sender cannot forge: the claimed singer is resolved from the bridge-stamped
+    // `from` (as `queueAdd` and `queueClear` resolve it), and ownership is the `singerId` recorded on
+    // the queue row, so a payload cannot name another phone's row as its own.
+    queueMove: payload => {
+      const singer = store.getters?.getSingerByPhone?.(payload?.from) ?? null
+      const items = store.getters?.getKaraokeUpcoming ?? []
+      const row = items.find(item => item.id === payload?.itemId)
+
+      if (row && !singer?.host && row.singerId !== singer?.id) return 'E_NOT_YOURS'
+
+      return store.dispatch('karaokeMove', { id: payload?.itemId, toIndex: payload?.toIndex })
+    },
     // One upvote per singer per song, so the voter is the sender's claimed roster row and
     // never anything the payload says. An unclaimed phone is refused rather than voting as
     // its `from` hash: re-pairing changes that hash, which would buy the same human a
