@@ -64,7 +64,6 @@ Nothing in this file touches Vuex, the datastore or the DOM.
 - Consumes: nothing (pure).
 - Produces (all used by Tasks 4–7):
   - `SINGER_COLORS` — the palette array of 8 CSS colours.
-  - `HOST_DEFAULT_NAME = 'Host'`.
   - `createRoster()` → `[]`
   - `normalizeName(name)` → `string` (trimmed, collapsed whitespace, max 24 chars)
   - `findByName(roster, name)` → singer | null (case-insensitive)
