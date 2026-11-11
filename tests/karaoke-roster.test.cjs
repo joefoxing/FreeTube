@@ -92,12 +92,21 @@ test('exactly one singer is the host at a time', () => {
   assert.equal(findByPhone(moved.roster, 'ph_a').host, false)
 })
 
-test('a claim is refused when another singer already holds the host, and setHost moves it', () => {
+test('a second claim does not take the host, and setHost moves it to another singer', () => {
   const ada = claimSinger(createRoster(), { name: 'Ada', phoneId: 'ph_a' })
   const grace = claimSinger(ada.roster, { name: 'Grace', phoneId: 'ph_b' })
 
   assert.equal(grace.singer.host, false)
-  assert.equal(grace.roster.filter(singer => singer.host).map(singer => singer.name).join(), 'Ada')
+  assert.equal(grace.roster.filter(singer => singer.host).length, 1)
+  assert.equal(grace.roster.filter(singer => singer.host)[0].name, 'Ada')
+
+  const moved = setHost(grace.roster, { singerId: grace.singer.id })
+
+  assert.equal(moved.code, null)
+  assert.equal(moved.roster.filter(singer => singer.host).length, 1)
+  assert.equal(moved.roster.filter(singer => singer.host)[0].name, 'Grace')
+  assert.equal(findByPhone(moved.roster, 'ph_b').host, true)
+  assert.equal(findByPhone(moved.roster, 'ph_a').host, false)
 })
 
 test('setHost on an unknown singer is refused', () => {
@@ -145,4 +154,49 @@ test('rotation ignores singers that are switched off', () => {
 
   assert.equal(nextSingerId(off.roster, { lastSingerId: null, pendingSingerIds: [a.id, g.id] }), a.id)
   assert.equal(nextSingerId(off.roster, { lastSingerId: a.id, pendingSingerIds: [g.id] }), null)
+})
+
+test('renaming an unknown singer is refused and leaves the roster untouched', () => {
+  const ada = claimSinger(createRoster(), { name: 'Ada', phoneId: 'ph_a' })
+  const grace = claimSinger(ada.roster, { name: 'Grace', phoneId: 'ph_b' })
+
+  const result = renameSinger(grace.roster, { singerId: 's_nope', name: 'Linus' })
+
+  assert.equal(result.code, 'E_NOT_FOUND')
+  assert.equal(result.roster.length, 2)
+  assert.deepEqual(result.roster.map(singer => singer.name), ['Ada', 'Grace'])
+})
+
+test('renaming a singer to a blank name is refused and leaves the roster untouched', () => {
+  const ada = claimSinger(createRoster(), { name: 'Ada', phoneId: 'ph_a' })
+
+  const result = renameSinger(ada.roster, { singerId: ada.singer.id, name: '   ' })
+
+  assert.equal(result.code, 'E_BAD_NAME')
+  assert.equal(result.roster.length, 1)
+  assert.equal(result.roster[0].name, 'Ada')
+})
+
+test('releasing an unknown singer is refused', () => {
+  assert.equal(releaseSinger(createRoster(), { singerId: 's_nope' }).code, 'E_NOT_FOUND')
+})
+
+test('switching an unknown singer on or off is refused', () => {
+  assert.equal(setSingerActive(createRoster(), { singerId: 's_nope', active: false }).code, 'E_NOT_FOUND')
+})
+
+test('recording a song for an unknown singer is refused', () => {
+  assert.equal(recordSong(createRoster(), { singerId: 's_nope', score: 50 }).code, 'E_NOT_FOUND')
+})
+
+test('the colour palette wraps once the roster is longer than it', () => {
+  let roster = createRoster()
+
+  for (let index = 0; index < SINGER_COLORS.length + 1; index += 1) {
+    roster = claimSinger(roster, { name: `Singer ${index}`, phoneId: `ph_${index}` }).roster
+  }
+
+  assert.equal(roster.length, SINGER_COLORS.length + 1)
+  assert.equal(roster[0].color, SINGER_COLORS[0])
+  assert.equal(roster[SINGER_COLORS.length].color, SINGER_COLORS[0])
 })
