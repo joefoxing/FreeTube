@@ -602,3 +602,114 @@ test('a successful claim is acked ok:true with no code', async () => {
   assert.equal(singers.roster.length, 1, 'the successful claim added its roster row')
   assert.equal(singers.roster[0].phoneId, 'ph_c')
 })
+
+// ── P3: voting over the wire ─────────────────────────────────────────────────
+
+test('the queue frame carries the votes map, and only for rows that have one', async () => {
+  const agent = await load()
+  const frame = agent.buildQueueFrame(
+    {
+      active: true,
+      rotation: 'fifo',
+      lastSingerId: null,
+      current: { id: 'k_now', videoId: 'aaaaaaaaaaa', title: 'Now', votes: [] },
+      items: [
+        { id: 'k_one', videoId: 'bbbbbbbbbbb', title: 'One', votes: ['s1'] },
+        { id: 'k_two', videoId: 'ccccccccccc', title: 'Two' }
+      ],
+      played: [],
+      settings: {}
+    },
+    []
+  )
+
+  assert.deepEqual(frame.votes, { k_one: ['s1'] })
+})
+
+test('a vote command names the row with itemId and never the bridge id', async () => {
+  const { createKaraokeActions } = await loadActions()
+  const seen = []
+  const store = {
+    dispatch: (type, payload) => {
+      seen.push([type, payload])
+      return Promise.resolve(null)
+    },
+    getters: { getSingerByPhone: phoneId => (phoneId === 'ph_1' ? { id: 's1' } : null) }
+  }
+  const actions = createKaraokeActions(store)
+
+  const code = await actions.vote({ cmd: 'vote', itemId: 'k_one', id: 7, from: 'ph_1' })
+
+  assert.equal(code, null)
+  assert.deepEqual(seen, [['karaokeVote', { id: 'k_one', singerId: 's1' }]])
+})
+
+test('a phone that has claimed no name cannot vote, and dispatches nothing', async () => {
+  const { createKaraokeActions } = await loadActions()
+  const seen = []
+  const store = {
+    dispatch: (type, payload) => {
+      seen.push([type, payload])
+      return Promise.resolve(null)
+    },
+    getters: { getSingerByPhone: () => null }
+  }
+  const actions = createKaraokeActions(store)
+
+  assert.equal(await actions.vote({ cmd: 'vote', itemId: 'k_one', from: 'ph_9' }), 'E_NO_SINGER')
+  assert.deepEqual(seen, [])
+})
+
+test('a vote from the phone is acked ok:true and republishes a queue frame with the vote in it', async () => {
+  const { createRemoteAgent } = await load()
+  const { createKaraokeActions } = await import('../src/renderer/remote/karaoke-actions.js')
+  const store = (await import('../src/renderer/store/modules/karaoke.js')).default
+  const { createRoster, claimSinger } = await loadRoster()
+  const roster = claimSinger(createRoster(), { name: 'Ada', phoneId: 'ph_1' }).roster
+
+  const state = store.state()
+  const commit = (type, payload) => store.mutations[type](state, payload)
+  const dispatch = (type, payload) => store.actions[type]({ state, commit }, payload)
+  const singer = roster[0]
+  const karaokeActions = createKaraokeActions({
+    dispatch,
+    getters: { getSingerByPhone: phoneId => roster.find(row => row.phoneId === phoneId) ?? null }
+  })
+
+  // Two rows so the move is observable in the republished frame.
+  await dispatch('karaokeAdd', { videoId: 'aaaaaaaaaaa', title: 'One' })
+  await dispatch('karaokeAdd', { videoId: 'bbbbbbbbbbb', title: 'Two' })
+  const target = state.items[1].id
+
+  const video = new EventTarget()
+  Object.assign(video, { paused: true, currentTime: 0, duration: 100, volume: 1, muted: false, playbackRate: 1 })
+  FakeSocket.instances = []
+  const agent = createRemoteAgent({
+    url: 'wss://example/ws',
+    deviceKey: 'k',
+    getVideo: () => video,
+    getMeta: () => ({ videoId: 'abc', title: 'T', channel: 'C', thumbnail: '' }),
+    getKaraoke: () => state,
+    getSingers: () => roster,
+    getKaraokeActions: () => karaokeActions,
+    WebSocketImpl: FakeSocket,
+    now: () => 1000,
+    setTimeoutImpl: () => 0,
+    clearTimeoutImpl: () => {},
+    setIntervalImpl: () => 0,
+    clearIntervalImpl: () => {}
+  })
+  agent.start()
+  const socket = FakeSocket.instances.at(-1)
+  socket.open()
+  socket.sent.length = 0
+
+  socket.receive({ t: 'cmd', id: 9, cmd: 'vote', itemId: target, from: 'ph_1' })
+  await flush()
+
+  assert.ok(socket.sent.some(m => m.t === 'ack' && m.id === 9 && m.ok === true), 'the vote is acked ok')
+  const frame = socket.sent.filter(m => m.t === 'queue').at(-1)
+  assert.deepEqual(frame.karaoke.votes, { [target]: [singer.id] })
+  assert.equal(frame.karaoke.upcoming[0].id, target, 'the voted row is now first')
+  agent.stop()
+})

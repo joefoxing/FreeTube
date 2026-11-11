@@ -87,6 +87,17 @@ export function createKaraokeActions(store) {
 
       return store.dispatch('karaokeClear')
     },
-    queueMove: payload => store.dispatch('karaokeMove', { id: payload?.itemId, toIndex: payload?.toIndex })
+    queueMove: payload => store.dispatch('karaokeMove', { id: payload?.itemId, toIndex: payload?.toIndex }),
+    // One upvote per singer per song, so the voter is the sender's claimed roster row and
+    // never anything the payload says. An unclaimed phone is refused rather than voting as
+    // its `from` hash: re-pairing changes that hash, which would buy the same human a
+    // second vote — exactly what the spec forbids.
+    vote: payload => {
+      const singer = store.getters?.getSingerByPhone?.(payload?.from) ?? null
+
+      if (!singer) return 'E_NO_SINGER'
+
+      return store.dispatch('karaokeVote', { id: payload?.itemId, singerId: singer.id })
+    }
   }
 }

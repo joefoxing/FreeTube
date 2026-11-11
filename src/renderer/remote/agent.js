@@ -63,7 +63,8 @@ export const KARAOKE_COMMANDS = new Set([
   'queuePromote',
   'queueRemove',
   'queueClear',
-  'queueMove'
+  'queueMove',
+  'vote'
 ])
 
 /**
@@ -89,6 +90,27 @@ export function queueItemForWire(item) {
 }
 
 /**
+ * `itemId -> voter ids`, for the rows this frame carries and only when a row has a vote at
+ * all: an empty array per row would ride every queue change for nothing. The map, not a
+ * per-row count, is what a phone needs — it has to know whether the vote is *its*.
+ *
+ * @param {object} karaoke
+ * @returns {object}
+ */
+function votesForWire(karaoke) {
+  const rows = [karaoke.current, ...(Array.isArray(karaoke.items) ? karaoke.items : [])]
+  const votes = {}
+
+  for (const row of rows) {
+    if (row && Array.isArray(row.votes) && row.votes.length > 0) {
+      votes[row.id] = [...row.votes]
+    }
+  }
+
+  return votes
+}
+
+/**
  * @param {object|null} karaoke the store's karaoke state
  * @param {object[]} [singers] the roster, for names and colours on the phone
  * @returns {object|null}
@@ -106,6 +128,7 @@ export function buildQueueFrame(karaoke, singers) {
     upcoming: items.slice(0, UPCOMING_LIMIT).map(queueItemForWire),
     priorityCount: items.filter(item => item.priority).length,
     playedCount: Array.isArray(karaoke.played) ? karaoke.played.length : 0,
+    votes: votesForWire(karaoke),
     singers: (Array.isArray(singers) ? singers : []).map(singer => ({
       id: singer.id,
       name: singer.name,
