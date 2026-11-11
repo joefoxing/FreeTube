@@ -43,15 +43,27 @@ function queueCommandFields(payload) {
 export function createKaraokeActions(store) {
   return {
     karaokeSet: payload => store.dispatch('karaokeSetActive', Boolean(payload?.active)),
-    // The phone's own room id (the bridge stamps it as `from`) is the requester: the queue's
-    // priority cap is per-requester, so dropping it would let one phone eat the whole allowance.
-    // Identity comes ONLY from the bridge's `from`; a phone-supplied `requester` is ignored, and
-    // when there is no `from` the reducer's own default applies. The reserved keys are stripped so
-    // the bridge's command `id` can never become the row id.
-    queueAdd: payload => store.dispatch('karaokeAdd', {
-      ...queueCommandFields(payload),
-      requester: payload?.from
+    // The claim binds the bridge's phone id — the only identity a phone can prove, stamped on the
+    // relayed command as `from` — to a roster row. The phone sends a name; the phone id comes from
+    // the bridge's `from`, never from the payload, so a phone cannot claim a row for another phone.
+    singerClaim: payload => store.dispatch('singerClaim', {
+      name: payload?.name,
+      phoneId: payload?.from,
+      source: 'phone'
     }),
+    // Attribution: once the phone has claimed a singer, that singer is the requester — the priority
+    // cap counts singers, so re-pairing a phone must not buy a second allowance. An unclaimed phone
+    // keeps the P1 behaviour (its own `from`, else the reducer's default). The `singerId` rides the
+    // item too, so the reducer's own `getSingerByPhone` resolution agrees with this one.
+    queueAdd: payload => {
+      const singer = store.getters?.getSingerByPhone?.(payload?.from) ?? null
+
+      return store.dispatch('karaokeAdd', {
+        ...queueCommandFields(payload),
+        singerId: singer?.id ?? null,
+        requester: singer?.id ?? payload?.from
+      })
+    },
     // The row to act on travels in `itemId`, never in the reserved `id`.
     queuePromote: payload => store.dispatch('karaokePromote', payload?.itemId),
     queueRemove: payload => store.dispatch('karaokeRemove', payload?.itemId),

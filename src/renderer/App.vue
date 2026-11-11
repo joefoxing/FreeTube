@@ -232,6 +232,11 @@ onMounted(async () => {
 })
 
 onMounted(() => {
+  // The roster outlives a profile (it is a datastore), so it must be loaded once at start: an
+  // empty roster would leave every phone's claim resolving to nobody and the queue frame with no
+  // singers, even though the claims themselves are persisted.
+  store.dispatch('singersLoad')
+
   if (store.getters.getRemoteControlEnabled) {
     startRemoteControl(store.getters.getRemoteControlUrl)
   }
@@ -245,7 +250,7 @@ watch(() => store.getters.getRemoteControlEnabled, enabled => {
 /** The handlers a paired phone's queue commands land on, built against this store. */
 const karaokeActions = createKaraokeActions(store)
 
-watch(() => store.state.karaoke, karaoke => registerKaraoke(karaoke, karaokeActions), { deep: true, immediate: true })
+watch(() => store.state.karaoke, karaoke => registerKaraoke(karaoke, karaokeActions, () => store.getters.getSingers), { deep: true, immediate: true })
 
 onBeforeUnmount(() => {
   stopRemoteControl()

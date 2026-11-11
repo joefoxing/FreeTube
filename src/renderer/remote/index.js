@@ -10,6 +10,7 @@ let metaRef = () => ({})
 let actionsRef = null
 let karaokeRef = null
 let karaokeActionsRef = null
+let singersRef = null
 let pairing = null
 const listeners = new Set()
 
@@ -50,15 +51,17 @@ export function qrUrl(pairUrl, code) {
   return `${pairUrl.split('#')[0]}qr/${code}.svg`
 }
 
-export function registerKaraoke(snapshot, actions) {
+export function registerKaraoke(snapshot, actions, getSingers = () => []) {
   karaokeRef = snapshot
   karaokeActionsRef = actions
+  singersRef = getSingers
   agent?.publishQueue()
 }
 
 export function unregisterKaraoke() {
   karaokeRef = null
   karaokeActionsRef = null
+  singersRef = null
 }
 
 export function start(url) {
@@ -70,6 +73,7 @@ export function start(url) {
     getMeta: () => metaRef(),
     getActions: () => actionsRef,
     getKaraoke: () => karaokeRef,
+    getSingers: () => singersRef?.() ?? [],
     getKaraokeActions: () => karaokeActionsRef,
     onStatus: () => emit(),
     onPairCode: (code, pairUrl) => {

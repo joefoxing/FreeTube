@@ -243,3 +243,171 @@ test('a phone-added row never takes the bridge command id as its row id', async 
 
   agent.stop()
 })
+
+// --- singer roster reaches the phone ------------------------------------------------
+const loadRoster = () => import('../src/renderer/helpers/karaoke-roster.js')
+const loadQueue = () => import('../src/renderer/helpers/karaoke-queue.js')
+const loadActions = () => import('../src/renderer/remote/karaoke-actions.js')
+
+test('a singer claim binds the bridge phone id to a roster row', async () => {
+  const { createKaraokeActions } = await loadActions()
+  const { createRoster, claimSinger } = await loadRoster()
+
+  const store = {
+    state: { singers: { roster: createRoster() } },
+    dispatch: (type, payload) => {
+      if (type === 'singerClaim') {
+        const result = claimSinger(store.state.singers.roster, payload)
+        store.state.singers.roster = result.roster
+        return result
+      }
+      return null
+    }
+  }
+  const actions = createKaraokeActions(store)
+
+  await actions.singerClaim({ name: 'Ada', from: 'ph_a' })
+
+  assert.equal(store.state.singers.roster[0].phoneId, 'ph_a')
+  assert.equal(store.state.singers.roster[0].name, 'Ada')
+})
+
+test('an add from a claimed phone is attributed to the singer, not the phone', async () => {
+  const { createKaraokeActions } = await loadActions()
+  const { createRoster, claimSinger } = await loadRoster()
+
+  const roster = claimSinger(createRoster(), { name: 'Ada', phoneId: 'ph_a' }).roster
+  const calls = []
+  const store = {
+    state: { singers: { roster } },
+    getters: { getSingerByPhone: phoneId => roster.find(singer => singer.phoneId === phoneId) ?? null },
+    dispatch: (type, payload) => { calls.push({ type, payload }); return null }
+  }
+  const actions = createKaraokeActions(store)
+
+  await actions.queueAdd({ videoId: 'aaaaaaaaaaa', title: 'A', from: 'ph_a' })
+
+  assert.equal(calls[0].type, 'karaokeAdd')
+  assert.equal(calls[0].payload.singerId, roster[0].id)
+  assert.equal(calls[0].payload.requester, roster[0].id)
+  assert.equal(calls[0].payload.id, undefined)
+})
+
+test('an add from an unclaimed phone falls back to the bridge phone id', async () => {
+  const { createKaraokeActions } = await loadActions()
+
+  const calls = []
+  const store = {
+    state: { singers: { roster: [] } },
+    getters: { getSingerByPhone: () => null },
+    dispatch: (type, payload) => { calls.push({ type, payload }); return null }
+  }
+  const actions = createKaraokeActions(store)
+
+  await actions.queueAdd({ videoId: 'aaaaaaaaaaa', title: 'A', from: 'ph_z' })
+
+  assert.equal(calls[0].payload.singerId, null)
+  assert.equal(calls[0].payload.requester, 'ph_z')
+})
+
+test('the queue frame carries the roster but never inside the state frame', async () => {
+  const { buildQueueFrame, buildState } = await load()
+  const { createRoster, claimSinger } = await loadRoster()
+  const { createQueue } = await loadQueue()
+
+  const roster = claimSinger(createRoster(), { name: 'Ada', phoneId: 'ph_a' }).roster
+  const queue = { ...createQueue(), active: true }
+  const frame = buildQueueFrame(queue, roster)
+  // buildState reads the media element's fields, so it needs a real-shaped video, not null.
+  const video = { duration: 0, currentTime: 0, paused: true, volume: 1, muted: false, playbackRate: 1 }
+  const state = { ...buildState({ title: 'T', videoId: 'aaaaaaaaaaa' }, video, 0), karaokeActive: true }
+
+  assert.equal(frame.singers.length, 1)
+  assert.equal(frame.singers[0].name, 'Ada')
+  assert.deepEqual(Object.keys(state).sort(), STATE_FRAME_KEYS)
+})
+
+test('a frame with no roster sends an empty singers list, not undefined', async () => {
+  const { buildQueueFrame } = await load()
+  const { createQueue } = await loadQueue()
+
+  assert.deepEqual(buildQueueFrame({ ...createQueue(), active: true }, undefined).singers, [])
+})
+
+// The wire half of the roster: a claim relayed over the socket reaches the roster through the
+// agent's REAL command routing (KARAOKE_COMMANDS) and the REAL action map, and the very next queue
+// frame names the singer — not the phone — as the requester. The singers store action itself is not
+// reachable here (it persists through nedb), so its dispatch is stood in by the pure helper; the
+// karaoke reducer the add lands on is the real one.
+test('a claim over the wire reaches the roster and names the singer on the queue frame', async () => {
+  const { createRemoteAgent } = await load()
+  const { createKaraokeActions } = await loadActions()
+  const { createRoster, claimSinger } = await loadRoster()
+  const karaokeStore = (await import('../src/renderer/store/modules/karaoke.js')).default
+
+  const singers = { roster: createRoster() }
+  const state = karaokeStore.state()
+  const commit = (type, payload) => karaokeStore.mutations[type](state, payload)
+  const dispatch = (type, payload) => {
+    if (type === 'karaokeAdd') return karaokeStore.actions.karaokeAdd({ state, commit }, payload)
+    if (type === 'singerClaim') {
+      const { roster, singer, code } = claimSinger(singers.roster, payload)
+      if (code === null) singers.roster = roster
+      return { singer, code }
+    }
+    return null
+  }
+  const getters = {
+    getSingerByPhone: phoneId => singers.roster.find(singer => singer.phoneId === phoneId) ?? null,
+    getSingers: () => singers.roster
+  }
+  const karaokeActions = createKaraokeActions({ dispatch, getters })
+
+  const video = new EventTarget()
+  Object.assign(video, { paused: true, currentTime: 0, duration: 100, volume: 1, muted: false, playbackRate: 1 })
+
+  FakeSocket.instances = []
+  const agent = createRemoteAgent({
+    url: 'wss://nextcloud.taild1347f.ts.net:10000/remote/ws',
+    deviceKey: 'device-key',
+    getVideo: () => video,
+    getMeta: () => ({ videoId: 'abc', title: 'T', channel: 'C', thumbnail: '' }),
+    getActions: () => null,
+    getKaraoke: () => state,
+    getKaraokeActions: () => karaokeActions,
+    getSingers: () => singers.roster,
+    WebSocketImpl: FakeSocket,
+    now: () => 1000,
+    setTimeoutImpl: () => 0,
+    clearTimeoutImpl: () => {},
+    setIntervalImpl: () => 0,
+    clearIntervalImpl: () => {}
+  })
+
+  agent.start()
+  const socket = FakeSocket.instances.at(-1)
+  socket.open()
+
+  socket.receive({ t: 'cmd', id: 5, cmd: 'singerClaim', name: 'Ada', from: 'ph_a' })
+  await flush()
+
+  assert.equal(singers.roster.length, 1, 'the claim reached the roster')
+  assert.equal(singers.roster[0].phoneId, 'ph_a')
+  assert.ok(socket.sent.some(m => m.t === 'ack' && m.id === 5 && m.ok === true), 'the claim is acked')
+
+  const claimed = socket.sent.filter(m => m.t === 'queue').at(-1)
+  assert.ok(claimed, 'a queue frame rides the claim')
+  assert.deepEqual(claimed.karaoke.singers.map(singer => singer.name), ['Ada'])
+
+  socket.sent.length = 0
+  socket.receive({ t: 'cmd', id: 6, cmd: 'queueAdd', videoId: 'aaaaaaaaaaa', title: 'A', from: 'ph_a' })
+  await flush()
+
+  const added = state.items.find(item => item.videoId === 'aaaaaaaaaaa')
+  assert.ok(added, 'the add reached the queue')
+  assert.equal(added.requester, singers.roster[0].id, 'the claimed singer, not the phone, is the requester')
+  assert.equal(added.singerId, singers.roster[0].id)
+  assert.equal(socket.sent.filter(m => m.t === 'queue').at(-1).karaoke.upcoming.at(-1).singerId, singers.roster[0].id)
+
+  agent.stop()
+})

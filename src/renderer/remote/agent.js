@@ -58,6 +58,7 @@ export const UPCOMING_LIMIT = 20
 
 export const KARAOKE_COMMANDS = new Set([
   'karaokeSet',
+  'singerClaim',
   'queueAdd',
   'queuePromote',
   'queueRemove',
@@ -78,18 +79,21 @@ export function queueItemForWire(item) {
     videoId: item.videoId,
     title: item.title,
     channel: item.channel,
-    durationSeconds: item.durationSeconds,
-    thumbnail: item.thumbnail,
+    durationSeconds: item.durationSeconds ?? null,
+    thumbnail: item.thumbnail ?? null,
+    requester: item.requester ?? null,
+    singerId: item.singerId ?? null,
     priority: Boolean(item.priority),
-    requester: item.requester
+    addedAt: item.addedAt ?? null
   }
 }
 
 /**
  * @param {object|null} karaoke the store's karaoke state
+ * @param {object[]} [singers] the roster, for names and colours on the phone
  * @returns {object|null}
  */
-export function buildQueueFrame(karaoke) {
+export function buildQueueFrame(karaoke, singers) {
   if (!karaoke) return null
 
   const items = Array.isArray(karaoke.items) ? karaoke.items : []
@@ -97,10 +101,18 @@ export function buildQueueFrame(karaoke) {
   return {
     active: Boolean(karaoke.active),
     rotation: karaoke.rotation ?? 'fifo',
+    lastSingerId: karaoke.lastSingerId ?? null,
     current: karaoke.current ? queueItemForWire(karaoke.current) : null,
     upcoming: items.slice(0, UPCOMING_LIMIT).map(queueItemForWire),
     priorityCount: items.filter(item => item.priority).length,
-    playedCount: Array.isArray(karaoke.played) ? karaoke.played.length : 0
+    playedCount: Array.isArray(karaoke.played) ? karaoke.played.length : 0,
+    singers: (Array.isArray(singers) ? singers : []).map(singer => ({
+      id: singer.id,
+      name: singer.name,
+      color: singer.color,
+      host: Boolean(singer.host),
+      active: Boolean(singer.active)
+    }))
   }
 }
 
@@ -201,6 +213,7 @@ export function createRemoteAgent(options) {
     onStatus = () => {},
     getActions = () => null,
     getKaraoke = () => null,
+    getSingers = () => [],
     getKaraokeActions = () => null,
     navigate = videoId => { window.location.hash = `#/watch/${videoId}` },
     WebSocketImpl = globalThis.WebSocket,
@@ -235,7 +248,7 @@ export function createRemoteAgent(options) {
   }
 
   function publishQueue() {
-    const frame = buildQueueFrame(getKaraoke())
+    const frame = buildQueueFrame(getKaraoke(), getSingers())
     if (frame) send({ t: 'queue', karaoke: frame })
   }
 
