@@ -209,6 +209,24 @@ class SubscriptionCache {
   }
 }
 
+class Karaoke {
+  static find() {
+    return window.ftElectron.dbKaraoke(DBActions.GENERAL.FIND)
+  }
+
+  static upsert(record) {
+    return window.ftElectron.dbKaraoke(DBActions.GENERAL.UPSERT, record)
+  }
+
+  static remove(_id) {
+    return window.ftElectron.dbKaraoke(DBActions.GENERAL.DELETE, _id)
+  }
+
+  static removeAll() {
+    return window.ftElectron.dbKaraoke(DBActions.GENERAL.DELETE_ALL)
+  }
+}
+
 export {
   Settings as settings,
   History as history,
@@ -216,4 +234,5 @@ export {
   Playlists as playlists,
   SearchHistory as searchHistory,
   SubscriptionCache as subscriptionCache,
+  Karaoke as karaoke,
 }

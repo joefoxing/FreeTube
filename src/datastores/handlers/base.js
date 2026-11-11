@@ -399,6 +399,24 @@ class SubscriptionCache {
   }
 }
 
+class Karaoke {
+  static find() {
+    return db.karaoke.findAsync({})
+  }
+
+  static upsert(record) {
+    return db.karaoke.updateAsync({ _id: record._id }, record, { upsert: true })
+  }
+
+  static remove(_id) {
+    return db.karaoke.removeAsync({ _id }, {})
+  }
+
+  static removeAll() {
+    return db.karaoke.removeAsync({}, { multi: true })
+  }
+}
+
 function loadDatastores() {
   return Promise.allSettled([
     db.settings.loadDatabaseAsync(),
@@ -428,6 +446,7 @@ export {
   Playlists as playlists,
   SearchHistory as searchHistory,
   SubscriptionCache as subscriptionCache,
+  Karaoke as karaoke,
 
   loadDatastores,
   compactAllDatastores,
