@@ -138,9 +138,15 @@ files use):
 - The `<li>` gains `draggable="true"` and the handlers; keep them inert in `compact` mode (the watch
   page's 3-row bar is not a reordering surface).
 - `@dragstart="dragFrom = index; $event.dataTransfer.effectAllowed = 'move'"`,
-  `@dragover.prevent="dragOver = index"`, `@drop.prevent="dropOn(index)"`,
-  `@dragend="clearDrag()"`. `dropOn(target)` dispatches
-  `karaokeMove({id: shown[target].id, toIndex: dropToIndex(dragFrom, target)})` and clears state.
+              `@dragover.prevent="dragOver = index"`, `@drop.prevent="dropOn(index)"`,
+              `@dragend="clearDrag()"`. `dropOn(target)` dispatches `karaokeMove(dropMove(shown, dragFrom, target))`
+  and clears state -- the DRAGGED row moves, never the row under the cursor. (This plan first said
+  `shown[target].id`; the live proof below caught it moving the wrong song, and the decision was moved
+  into the tested helper `dropMove`.)
+
+**Live proof, 2026-11-11:** drag on the published build moved `Bravo` when `Charlie` was dragged
+(`moveItem`'s `priority = toIndex < priorityRunLength(rest)` explains the resulting
+`[Charlie*, Bravo*, Alpha*]` exactly), which is why `dropMove` now exists with those tests.
 - Classes for the dragging row and the row under it (`.isDragging`, `.isDropTarget`) in the CSS, so
   the affordance is visible — a drag that shows nothing reads as a broken list.
 - Locale keys: `Karaoke.Move Up`, `Karaoke.Move Down` (used by the aria-labels below); NO raw glyph in

@@ -123,7 +123,7 @@ import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useStore } from 'vuex'
 
-import { dropToIndex, stepToIndex } from '../../helpers/karaoke-move.js'
+import { dropMove, stepToIndex } from '../../helpers/karaoke-move.js'
 
 const props = defineProps({
   compact: {
@@ -203,14 +203,12 @@ function dropOn(index) {
 
   clearDrag()
 
-  // Landing on its own slot is a dither, not an instruction: dispatching it would still commit a
-  // new queue object (and a persistence write) for a no-op.
-  if (from === null || from === index) return
+  // Which row travels, and where it lands, is decided by the helper -- not here, where no unit test
+  // could reach it: this is the one place a wrong-row move hides, because the list reorders either way.
+  const move = dropMove(shown.value, from, index)
 
-  const toIndex = dropToIndex(from, index)
-
-  if (toIndex !== null) {
-    store.dispatch('karaokeMove', { id: shown.value[index].id, toIndex })
+  if (move) {
+    store.dispatch('karaokeMove', move)
   }
 }
 

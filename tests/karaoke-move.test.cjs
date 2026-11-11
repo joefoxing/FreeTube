@@ -44,6 +44,30 @@ test('nonsense drops are refused rather than guessed', async () => {
   assert.equal(dropToIndex(1.5, 2), null, 'a fractional index is not a position')
 })
 
+test('a drop moves the row that was DRAGGED, not the row it was dropped on', async () => {
+  const { dropMove } = await load()
+
+  const rows = [{ id: 'kA' }, { id: 'kB' }, { id: 'kC' }]
+
+  // Dragging the FIRST row onto the third slot: kA travels to index 1. Naming kC here instead
+  // (the row under the cursor) reorders the list just as convincingly and moves the wrong song.
+  assert.deepEqual(dropMove(rows, 0, 2), { id: 'kA', toIndex: 1 }, 'the dragged row is the one that moves')
+  assert.deepEqual(dropMove(rows, 2, 0), { id: 'kC', toIndex: 0 }, 'and it travels upward as well as down')
+  assert.deepEqual(dropMove(rows, 2, 1), { id: 'kC', toIndex: 1 }, 'a drop onto the row above lands above it')
+})
+
+test('a drop with nothing to do is refused, so no queue write happens for it', async () => {
+  const { dropMove } = await load()
+
+  const rows = [{ id: 'kA' }, { id: 'kB' }]
+
+  assert.equal(dropMove(rows, 1, 1), null, 'a drop onto its own slot is a dither, not an instruction')
+  assert.equal(dropMove(rows, 0, 5), null, 'a drop past the end has no landing place')
+  assert.equal(dropMove(rows, undefined, 1), null, 'a drag that never started has no row')
+  assert.equal(dropMove(rows, 9, 0), null, 'a drag of a row that is gone has no row')
+  assert.equal(dropMove([], 0, 0), null, 'an empty queue has nothing to move')
+})
+
 test('a phone step moves one place, and stops at the ends', async () => {
   const { stepToIndex } = await load()
 

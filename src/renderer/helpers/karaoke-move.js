@@ -20,6 +20,33 @@ export function dropToIndex(from, droppedAt) {
 }
 
 /**
+ * The move a drop means: the row that was DRAGGED, and the index it lands at.
+ *
+ * The dragged row is the one that moves -- moving the row it was dropped on is the bug this function
+ * exists to make impossible: the list still reorders either way, so nothing on screen says which row
+ * travelled. A drop onto the dragged row's own slot is a dither, and returns `null` so no queue write
+ * (and no persistence write) happens for it.
+ *
+ * @param {object[]} rows the queue as displayed, the dragged row still in it
+ * @param {number} from the dragged row's index in `rows`
+ * @param {number} droppedAt the index the row was dropped at, in `rows`
+ * @returns {{id: string, toIndex: number}|null}
+ */
+export function dropMove(rows, from, droppedAt) {
+  const list = Array.isArray(rows) ? rows : []
+  const toIndex = dropToIndex(from, droppedAt)
+
+  if (toIndex === null || from === droppedAt) return null
+  // A landing place outside the list is refused here rather than sent: the reducer would only refuse
+  // it again (E_BAD_INDEX) and the phone would read a code for a move the UI should never offer.
+  if (toIndex < 0 || toIndex >= list.length) return null
+
+  const row = list[from]
+
+  return row?.id ? { id: row.id, toIndex } : null
+}
+
+/**
  * The `toIndex` a phone's up/down button means.
  *
  * `rows` must be the queue in the STORE's order -- the frame's `upcoming` -- never the order the phone
