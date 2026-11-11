@@ -5,16 +5,20 @@
 // implementation. `current` is deliberately NOT part of `items`: the song on screen
 // cannot be reordered, removed or dragged by accident.
 
+import { nextSingerId } from './karaoke-roster.js'
+
 export const VIDEO_ID = /^[A-Za-z0-9_-]{11}$/
 export const PLAYED_LIMIT = 50
 export const PRIORITY_CAP = 2
+export const ROTATIONS = ['fifo', 'round_robin']
 
 export const CODES = {
   BAD_VIDEO_ID: 'E_BAD_VIDEO_ID',
   DUPLICATE: 'E_DUPLICATE',
   PRIORITY_CAP: 'E_PRIORITY_CAP',
   NOT_FOUND: 'E_NOT_FOUND',
-  BAD_INDEX: 'E_BAD_INDEX'
+  BAD_INDEX: 'E_BAD_INDEX',
+  BAD_ROTATION: 'E_BAD_ROTATION'
 }
 
 const SCHEMA = 1
@@ -29,6 +33,7 @@ export function createQueue() {
   return {
     active: false,
     rotation: 'fifo',
+    lastSingerId: null,
     current: null,
     items: [],
     played: [],
@@ -84,6 +89,7 @@ export function addItem(queue, item, requester = 'local') {
     durationSeconds: Number.isFinite(item.durationSeconds) ? item.durationSeconds : null,
     thumbnail: String(item.thumbnail ?? ''),
     requester: item.requester ?? requester,
+    singerId: item?.singerId ?? null,
     priority: Boolean(item.priority),
     addedAt: Date.now()
   }
@@ -182,12 +188,29 @@ export function moveItem(queue, id, toIndex) {
 
 /**
  * @param {object} queue
+ * @param {{rotation?: string, roster?: object[]}} [options]
  * @returns {object|null} the item that should play next
  */
-export function pickNext(queue) {
+export function pickNext(queue, options) {
   const priority = queue.items.find(item => item.priority)
 
-  return priority ?? queue.items[0] ?? null
+  if (priority) return priority
+
+  const rotation = options?.rotation ?? queue.rotation
+
+  if (rotation === 'round_robin') {
+    const pending = queue.items.map(item => item.singerId).filter(singerId => singerId !== null)
+    const singerId = nextSingerId(options?.roster ?? [], {
+      lastSingerId: queue.lastSingerId,
+      pendingSingerIds: pending
+    })
+
+    if (singerId) {
+      return queue.items.find(item => item.singerId === singerId) ?? queue.items[0] ?? null
+    }
+  }
+
+  return queue.items[0] ?? null
 }
 
 /**
@@ -218,7 +241,12 @@ export function completeCurrent(queue) {
   }
 
   return {
-    queue: { ...queue, current: null, played: [...queue.played, queue.current].slice(-PLAYED_LIMIT) },
+    queue: {
+      ...queue,
+      current: null,
+      lastSingerId: queue.current.singerId ?? queue.lastSingerId,
+      played: [...queue.played, queue.current].slice(-PLAYED_LIMIT)
+    },
     code: null
   }
 }
@@ -266,6 +294,19 @@ export function setSettings(queue, partial) {
 
 /**
  * @param {object} queue
+ * @param {string} rotation
+ * @returns {{queue: object, code: string|null}}
+ */
+export function setRotation(queue, rotation) {
+  if (!ROTATIONS.includes(rotation)) {
+    return { queue, code: CODES.BAD_ROTATION }
+  }
+
+  return { queue: { ...queue, rotation }, code: null }
+}
+
+/**
+ * @param {object} queue
  * @returns {string}
  */
 export function serializeQueue(queue) {
@@ -273,6 +314,7 @@ export function serializeQueue(queue) {
     v: SCHEMA,
     active: queue.active,
     rotation: queue.rotation,
+    lastSingerId: queue.lastSingerId ?? null,
     current: queue.current,
     items: queue.items,
     played: queue.played,
@@ -305,6 +347,7 @@ export function deserializeQueue(json) {
       ...base,
       active: typeof raw.active === 'boolean' ? raw.active : base.active,
       rotation: typeof raw.rotation === 'string' ? raw.rotation : base.rotation,
+      lastSingerId: typeof raw.lastSingerId === 'string' ? raw.lastSingerId : null,
       current: raw.current && typeof raw.current === 'object' ? raw.current : null,
       items: Array.isArray(raw.items) ? raw.items : base.items,
       played: Array.isArray(raw.played) ? raw.played : base.played,

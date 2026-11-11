@@ -4,6 +4,47 @@ const assert = require('node:assert/strict')
 
 const load = () => import('../src/renderer/helpers/karaoke-queue.js')
 
+// Task 2's cases read the reducer through the same module the per-test `load()` imports; a
+// top-level `require` of the ESM helper works here (Node's require(esm)), the same way
+// tests/karaoke-roster.test.cjs requires the roster helper. The queue module is still loaded
+// fresh per test by `load()`; this binding is only for the module-scope helpers below.
+const {
+  addItem,
+  completeCurrent,
+  createQueue,
+  deserializeQueue,
+  pickNext,
+  promoteItem,
+  serializeQueue,
+  setRotation,
+  startItem
+} = require('../src/renderer/helpers/karaoke-queue.js')
+
+const { createRoster, claimSinger } = require('../src/renderer/helpers/karaoke-roster.js')
+
+function twoSingerRoster() {
+  const ada = claimSinger(createRoster(), { name: 'Ada', phoneId: 'ph_a' })
+  const grace = claimSinger(ada.roster, { name: 'Grace', phoneId: 'ph_b' })
+
+  return { ada: ada.singer.id, grace: grace.singer.id, roster: grace.roster }
+}
+
+function queueWith(rows) {
+  return rows.reduce((queue, row) => {
+    const added = addItem(
+      queue,
+      {
+        videoId: row.videoId,
+        title: row.title,
+        singerId: row.singerId ?? null
+      },
+      row.requester
+    )
+
+    return added.queue
+  }, createQueue())
+}
+
 const A = { videoId: 'aaaaaaaaaaa', title: 'A' }
 const B = { videoId: 'bbbbbbbbbbb', title: 'B' }
 const C = { videoId: 'ccccccccccc', title: 'C' }
@@ -313,4 +354,106 @@ test('deserialize fills createQueue defaults for a v:1 payload missing or mistyp
   assert.equal(wrong.active, false)
   assert.equal(wrong.rotation, 'fifo')
   assert.equal(wrong.current, null)
+})
+
+test('a fifo queue ignores rotation and takes the plain order', () => {
+  const { ada, grace } = twoSingerRoster()
+  const queue = queueWith([
+    { videoId: 'aaaaaaaaaaa', title: 'A', requester: ada, singerId: ada },
+    { videoId: 'bbbbbbbbbbb', title: 'B', requester: grace, singerId: grace }
+  ])
+
+  assert.equal(pickNext(queue, { rotation: 'fifo' }).videoId, 'aaaaaaaaaaa')
+})
+
+test('round robin gives the next singer their earliest pending song', () => {
+  const { ada, grace, roster } = twoSingerRoster()
+  const queue = {
+    ...queueWith([
+      { videoId: 'aaaaaaaaaaa', title: 'A1', requester: ada, singerId: ada },
+      { videoId: 'bbbbbbbbbbb', title: 'B1', requester: grace, singerId: grace },
+      { videoId: 'ccccccccccc', title: 'A2', requester: ada, singerId: ada }
+    ]),
+    lastSingerId: ada
+  }
+
+  assert.equal(pickNext(queue, { rotation: 'round_robin', roster }).videoId, 'bbbbbbbbbbb')
+})
+
+test('round robin skips a singer with nothing pending instead of going silent', () => {
+  const { ada, grace, roster } = twoSingerRoster()
+  const queue = {
+    ...queueWith([
+      { videoId: 'aaaaaaaaaaa', title: 'A1', requester: ada, singerId: ada },
+      { videoId: 'ccccccccccc', title: 'A2', requester: ada, singerId: ada }
+    ]),
+    lastSingerId: grace
+  }
+
+  assert.equal(pickNext(queue, { rotation: 'round_robin', roster }).videoId, 'aaaaaaaaaaa')
+})
+
+test('round robin still lets a priority item jump the line', () => {
+  const { ada, grace, roster } = twoSingerRoster()
+  const promoted = queueWith([
+    { videoId: 'aaaaaaaaaaa', title: 'A1', requester: ada, singerId: ada },
+    { videoId: 'bbbbbbbbbbb', title: 'B1', requester: grace, singerId: grace }
+  ])
+  const queue = { ...promoteItem(promoted, promoted.items[1].id).queue, lastSingerId: ada }
+
+  assert.equal(pickNext(queue, { rotation: 'round_robin', roster }).videoId, 'bbbbbbbbbbb')
+})
+
+test('round robin falls back to the plain order when nothing can be rotated', () => {
+  const { roster } = twoSingerRoster()
+  const queue = queueWith([
+    { videoId: 'aaaaaaaaaaa', title: 'A', requester: 'local', singerId: null }
+  ])
+
+  assert.equal(pickNext(queue, { rotation: 'round_robin', roster }).videoId, 'aaaaaaaaaaa')
+})
+
+test('finishing a song records which singer it belonged to', () => {
+  const { ada } = twoSingerRoster()
+  const queue = queueWith([{ videoId: 'aaaaaaaaaaa', title: 'A', requester: ada, singerId: ada }])
+  const started = startItem(queue, queue.items[0].id).queue
+  const done = completeCurrent(started).queue
+
+  assert.equal(done.lastSingerId, ada)
+  assert.equal(done.current, null)
+})
+
+test('an item with no singer leaves the rotation cursor alone', () => {
+  const queue = queueWith([
+    { videoId: 'aaaaaaaaaaa', title: 'A', requester: 'local', singerId: null }
+  ])
+  const started = startItem(queue, queue.items[0].id).queue
+
+  assert.equal(completeCurrent(started).queue.lastSingerId, null)
+})
+
+test('setRotation accepts the two modes and refuses anything else', () => {
+  const queue = createQueue()
+
+  assert.equal(setRotation(queue, 'round_robin').queue.rotation, 'round_robin')
+  assert.equal(setRotation(queue, 'fifo').queue.rotation, 'fifo')
+  assert.equal(setRotation(queue, 'random').code, 'E_BAD_ROTATION')
+})
+
+test('a round-robin cursor survives a serialize round trip', () => {
+  const { ada } = twoSingerRoster()
+  const queue = { ...createQueue(), lastSingerId: ada }
+  const restored = deserializeQueue(serializeQueue(queue))
+
+  assert.equal(restored.lastSingerId, ada)
+})
+
+test('a persisted queue without a cursor restores it as null', () => {
+  const queue = { ...createQueue(), lastSingerId: 's_old' }
+  const json = JSON.parse(serializeQueue(queue))
+  delete json.lastSingerId
+  const restored = deserializeQueue(JSON.stringify(json))
+
+  assert.equal(restored.lastSingerId, null)
+  assert.equal(restored.rotation, 'fifo')
 })
