@@ -9,6 +9,7 @@ const load = () => import('../src/renderer/helpers/karaoke-queue.js')
 // tests/karaoke-roster.test.cjs requires the roster helper. The queue module is still loaded
 // fresh per test by `load()`; this binding is only for the module-scope helpers below.
 const {
+  CODES,
   addItem,
   completeCurrent,
   createQueue,
@@ -20,13 +21,22 @@ const {
   startItem
 } = require('../src/renderer/helpers/karaoke-queue.js')
 
-const { createRoster, claimSinger } = require('../src/renderer/helpers/karaoke-roster.js')
+const { createRoster, claimSinger, setSingerActive } = require('../src/renderer/helpers/karaoke-roster.js')
 
 function twoSingerRoster() {
   const ada = claimSinger(createRoster(), { name: 'Ada', phoneId: 'ph_a' })
   const grace = claimSinger(ada.roster, { name: 'Grace', phoneId: 'ph_b' })
 
   return { ada: ada.singer.id, grace: grace.singer.id, roster: grace.roster }
+}
+
+// Roster order matters to the rotation, so this pins [ada, bob, cindy] explicitly.
+function threeSingerRoster() {
+  const ada = claimSinger(createRoster(), { name: 'Ada', phoneId: 'ph_a' })
+  const bob = claimSinger(ada.roster, { name: 'Bob', phoneId: 'ph_b' })
+  const cindy = claimSinger(bob.roster, { name: 'Cindy', phoneId: 'ph_c' })
+
+  return { ada: ada.singer.id, bob: bob.singer.id, cindy: cindy.singer.id, roster: cindy.roster }
 }
 
 function queueWith(rows) {
@@ -456,4 +466,78 @@ test('a persisted queue without a cursor restores it as null', () => {
 
   assert.equal(restored.lastSingerId, null)
   assert.equal(restored.rotation, 'fifo')
+})
+
+// ---- round 1: mutation-survivor fixes ------------------------------------------------------
+
+test('round robin skips the first candidate after the cursor who cannot sing', () => {
+  const { ada, bob, cindy, roster } = threeSingerRoster()
+  // Roster order is [ada, bob, cindy] and the cursor sits on ada, so the first candidate in
+  // rotation order is bob. Bob has a queued song but is switched off, so he must be skipped:
+  // cindy is the only singer who can actually sing. A rotation that returns the immediate
+  // next roster entry would hand back bob's row.
+  const inactive = setSingerActive(roster, { singerId: bob, active: false }).roster
+  const queue = {
+    ...queueWith([
+      { videoId: 'bbbbbbbbbbb', title: 'B1', requester: bob, singerId: bob },
+      { videoId: 'ccccccccccc', title: 'C1', requester: cindy, singerId: cindy }
+    ]),
+    lastSingerId: ada
+  }
+
+  const picked = pickNext(queue, { rotation: 'round_robin', roster: inactive })
+  assert.equal(picked.videoId, 'ccccccccccc')
+  assert.equal(picked.singerId, cindy)
+})
+
+test('round robin still takes the priority row when rotation points at a different singer', () => {
+  const { ada, grace, roster } = twoSingerRoster()
+  const base = queueWith([
+    { videoId: 'aaaaaaaaaaa', title: 'A1', requester: ada, singerId: ada },
+    { videoId: 'bbbbbbbbbbb', title: 'B1', requester: grace, singerId: grace }
+  ])
+  // Priority belongs to ada; the cursor is on ada, so rotation's next target is grace. The two
+  // answers differ: the priority tier must win, an implementation that rotates first would pick
+  // grace's row instead.
+  const queue = {
+    ...promoteItem(base, base.items.find(item => item.singerId === ada).id).queue,
+    lastSingerId: ada
+  }
+
+  const picked = pickNext(queue, { rotation: 'round_robin', roster })
+  assert.equal(picked.videoId, 'aaaaaaaaaaa')
+  assert.equal(picked.singerId, ada)
+})
+
+test('an item with no singer leaves a seeded rotation cursor untouched', () => {
+  const { ada } = twoSingerRoster()
+  const seeded = {
+    ...queueWith([{ videoId: 'aaaaaaaaaaa', title: 'A', requester: 'local', singerId: null }]),
+    lastSingerId: ada
+  }
+  const started = startItem(seeded, seeded.items[0].id).queue
+
+  assert.equal(completeCurrent(started).queue.lastSingerId, ada)
+})
+
+test('the cursor is recorded when a song finishes, not when it starts', () => {
+  const { ada, grace } = twoSingerRoster()
+  const base = queueWith([
+    { videoId: 'aaaaaaaaaaa', title: 'A1', requester: ada, singerId: ada },
+    { videoId: 'bbbbbbbbbbb', title: 'B1', requester: grace, singerId: grace }
+  ])
+  const queue = { ...base, lastSingerId: ada }
+
+  const started = startItem(queue, base.items.find(item => item.singerId === grace).id).queue
+  assert.equal(started.lastSingerId, ada)
+
+  const done = completeCurrent(started).queue
+  assert.equal(done.lastSingerId, grace)
+})
+
+test('setRotation reports an unknown rotation with a real CODES member', () => {
+  const bad = setRotation(createQueue(), 'random')
+
+  assert.notEqual(CODES.BAD_ROTATION, undefined)
+  assert.equal(bad.code, CODES.BAD_ROTATION)
 })
