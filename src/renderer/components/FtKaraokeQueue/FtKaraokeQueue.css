@@ -34,6 +34,19 @@
   font-weight: bold;
 }
 
+.karaokeQueueRow[draggable='true'] {
+  cursor: grab;
+}
+
+.karaokeQueueRow.isDragging {
+  opacity: 0.4;
+}
+
+.karaokeQueueRow.isDropTarget {
+  /* Where the row would land, so the drag reads as a move and not as a list that ignores you. */
+  box-shadow: inset 0 2px 0 0 var(--primary-color, #4054b2);
+}
+
 .karaokeQueuePosition {
   min-inline-size: 1.5em;
   opacity: 0.6;
@@ -65,6 +78,16 @@
 
 .karaokeQueueButton {
   cursor: pointer;
+}
+
+.karaokeQueueButton.move {
+  min-inline-size: 2em;
+  line-height: 1;
+}
+
+.karaokeQueueButton[disabled] {
+  cursor: default;
+  opacity: 0.35;
 }
 
 .karaokeQueueEmpty {
