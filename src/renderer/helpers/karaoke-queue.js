@@ -18,7 +18,13 @@ export const CODES = {
   PRIORITY_CAP: 'E_PRIORITY_CAP',
   NOT_FOUND: 'E_NOT_FOUND',
   BAD_INDEX: 'E_BAD_INDEX',
-  BAD_ROTATION: 'E_BAD_ROTATION'
+  BAD_ROTATION: 'E_BAD_ROTATION',
+  // A vote targets a *queued* row: a song that has already played (or an id from a stale
+  // phone frame) is refused rather than resurrected, and an unclaimed phone has no singer
+  // to vote as — re-pairing would change its `from`, so voting as the phone would buy a
+  // second vote for the same human.
+  NOT_QUEUED: 'E_NOT_QUEUED',
+  NO_SINGER: 'E_NO_SINGER'
 }
 
 const SCHEMA = 1
@@ -187,6 +193,121 @@ export function moveItem(queue, id, toIndex) {
 }
 
 /**
+ * @param {object} item
+ * @returns {string[]} the singer ids that voted for this row, `[]` for a row from an older queue
+ */
+export function itemVotes(item) {
+  return Array.isArray(item?.votes) ? item.votes : []
+}
+
+/**
+ * @param {object} item
+ * @returns {number}
+ */
+export function voteCount(item) {
+  return itemVotes(item).length
+}
+
+/**
+ * The row the TV's "top voted" badge belongs to: the normal tier's highest vote count, ties
+ * going to the row that comes first. Priority rows are excluded — they carry the priority
+ * badge, and a vote never moves them.
+ *
+ * @param {object} queue
+ * @returns {object|null}
+ */
+export function topVoted(queue) {
+  let best = null
+
+  for (const item of queue.items) {
+    if (item.priority || voteCount(item) === 0) continue
+    if (!best || voteCount(item) > voteCount(best)) best = item
+  }
+
+  return best
+}
+
+/**
+ * The index a just-voted row moves to: immediately after the last row it outranks inside its
+ * own lane, or at the head of that lane when it outranks nothing. Under `fifo` the lane is
+ * the whole normal tier; under `round_robin` it is that singer's own normal rows, so a vote
+ * can never jump another singer's turn. `at` is the row's index before it was lifted out,
+ * which is where it goes back when it has nowhere to move.
+ *
+ * @param {object[]} items the queue WITHOUT the voted row
+ * @param {object} item the voted row
+ * @param {string} rotation
+ * @param {number} at
+ * @returns {number}
+ */
+function votePosition(items, item, rotation, at) {
+  if (item.priority) {
+    return Math.min(at, items.length)
+  }
+
+  const lane = entry =>
+    !entry.priority && (rotation !== 'round_robin' || entry.singerId === item.singerId)
+
+  let after = -1
+
+  for (let index = 0; index < items.length; index += 1) {
+    if (lane(items[index]) && voteCount(items[index]) > voteCount(item)) {
+      after = index
+    }
+  }
+
+  if (after >= 0) return after + 1
+
+  const first = items.findIndex(lane)
+
+  if (first >= 0) return first
+
+  // The lane holds no other row at all. Under fifo that is an empty normal tier, whose head
+  // is just past the priority run; under round_robin the row has no rival to move past, so
+  // it stays exactly where it was.
+  return rotation === 'round_robin' ? Math.min(at, items.length) : priorityRunLength(items)
+}
+
+/**
+ * Toggle one singer's upvote on a queued row.
+ *
+ * Adding a vote is what moves the row ("a vote moves a song"); removing one leaves the row
+ * where the last vote put it, so an unvote cannot teleport a row the party just watched
+ * settle. Both directions refuse a row that is not queued, and both refuse a vote with no
+ * singer behind it.
+ *
+ * @param {object} queue
+ * @param {string} id
+ * @param {string} singerId
+ * @returns {{queue: object, code: string|null}}
+ */
+export function toggleVote(queue, id, singerId) {
+  if (!singerId) {
+    return { queue, code: CODES.NO_SINGER }
+  }
+
+  const at = queue.items.findIndex(entry => entry.id === id)
+
+  if (at === -1) {
+    return { queue, code: CODES.NOT_QUEUED }
+  }
+
+  const item = queue.items[at]
+  const voters = itemVotes(item)
+  const adding = !voters.includes(singerId)
+  const updated = {
+    ...item,
+    votes: adding ? [...voters, singerId] : voters.filter(voter => voter !== singerId)
+  }
+
+  const rest = queue.items.filter(entry => entry.id !== id)
+  const to = adding ? votePosition(rest, updated, queue.rotation, at) : Math.min(at, rest.length)
+  rest.splice(to, 0, updated)
+
+  return { queue: { ...queue, items: rest }, code: null }
+}
+
+/**
  * @param {object} queue
  * @param {{rotation?: string, roster?: object[]}} [options]
  * @returns {object|null} the item that should play next
@@ -306,6 +427,21 @@ export function setRotation(queue, rotation) {
 }
 
 /**
+ * Rows are kept exactly as stored, except for `votes`: a non-array (or a non-string entry)
+ * would make `itemVotes` throw on a payload any page script can write.
+ *
+ * @param {object[]} items
+ * @returns {object[]}
+ */
+function normalizeVotes(items) {
+  return items.map(item =>
+    Array.isArray(item?.votes)
+      ? { ...item, votes: item.votes.filter(voter => typeof voter === 'string') }
+      : item
+  )
+}
+
+/**
  * @param {object} queue
  * @returns {string}
  */
@@ -348,9 +484,9 @@ export function deserializeQueue(json) {
       active: typeof raw.active === 'boolean' ? raw.active : base.active,
       rotation: typeof raw.rotation === 'string' ? raw.rotation : base.rotation,
       lastSingerId: typeof raw.lastSingerId === 'string' ? raw.lastSingerId : null,
-      current: raw.current && typeof raw.current === 'object' ? raw.current : null,
-      items: Array.isArray(raw.items) ? raw.items : base.items,
-      played: Array.isArray(raw.played) ? raw.played : base.played,
+      current: raw.current && typeof raw.current === 'object' ? normalizeVotes([raw.current])[0] : null,
+      items: Array.isArray(raw.items) ? normalizeVotes(raw.items) : base.items,
+      played: Array.isArray(raw.played) ? normalizeVotes(raw.played) : base.played,
       settings: { ...base.settings, ...settings }
     }
   } catch {
