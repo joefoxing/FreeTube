@@ -13,7 +13,10 @@ import {
   setActive,
   setRotation,
   setSettings,
-  startItem
+  startItem,
+  toggleVote,
+  topVoted,
+  voteCount
 } from '../../helpers/karaoke-queue.js'
 
 // One key, not one per profile: a party queue that disappears because the TV profile
@@ -76,7 +79,15 @@ export default {
     getKaraokeNext: (state, getters, rootState, rootGetters) =>
       pickNext(state, { rotation: state.rotation, roster: rootGetters?.getSingers ?? [] }),
     getKaraokeRotation: state => state.rotation,
-    getKaraokePriorityCount: state => state.items.filter(item => item.priority).length
+    getKaraokePriorityCount: state => state.items.filter(item => item.priority).length,
+    // The song on screen is not in `items`, so it is searched too: the TV shows the count on the
+    // current line as well as on the rows waiting.
+    getKaraokeVoteCount: state => {
+      const rows = state.current ? [...state.items, state.current] : state.items
+
+      return id => voteCount(rows.find(item => item.id === id))
+    },
+    getKaraokeTopVotedId: state => topVoted(state)?.id ?? null
   },
   mutations: {
     /**
@@ -150,6 +161,26 @@ export default {
       const { queue, code } = promoteItem(snapshot(state), id)
       commit('setKaraokeQueue', queue)
       persist(queue)
+      return code
+    },
+    /**
+     * The voter is the singer the sending phone claimed, resolved by the caller: a refusal
+     * commits nothing, so a phone cannot make a rejected vote look applied.
+     *
+     * @param {object} context
+     * @param {object} context.state
+     * @param {object} context.commit
+     * @param {{id: string, singerId: string}} payload
+     * @returns {string|null}
+     */
+    karaokeVote({ state, commit }, payload) {
+      const { queue, code } = toggleVote(snapshot(state), payload?.id, payload?.singerId)
+
+      if (code === null) {
+        commit('setKaraokeQueue', queue)
+        persist(queue)
+      }
+
       return code
     },
     /** @returns {string|null} */

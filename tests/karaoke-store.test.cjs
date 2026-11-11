@@ -164,3 +164,41 @@ test('promote, remove, clear and move report their codes and leave a known queue
   assert.deepEqual(ctx.state.items, [])
   assert.equal(ctx.state.current, null)
 })
+
+test('a vote lands on the queue row, moves it and persists', async () => {
+  const module = await load()
+  const storage = fakeStorage()
+  const ctx = await context(module, storage)
+  const actions = module.default.actions
+  const getters = module.default.getters
+
+  await actions.karaokeAdd(ctx, { videoId: 'aaaaaaaaaaa', title: 'One' })
+  await actions.karaokeAdd(ctx, { videoId: 'bbbbbbbbbbb', title: 'Two' })
+  const target = ctx.state.items[1].id
+
+  const code = await actions.karaokeVote(ctx, { id: target, singerId: 's1' })
+
+  assert.equal(code, null)
+  assert.equal(getters.getKaraokeVoteCount(ctx.state)(target), 1)
+  assert.equal(getters.getKaraokeTopVotedId(ctx.state), target)
+  // The row moved to the head of the normal tier, and the move is persisted.
+  assert.deepEqual(ctx.state.items.map(item => item.title), ['Two', 'One'])
+  assert.deepEqual(JSON.parse(storage.dump()['freetube-karaoke']).items[0].votes, ['s1'])
+})
+
+test('a refused vote changes nothing', async () => {
+  const module = await load()
+  const ctx = await context(module, fakeStorage())
+  const actions = module.default.actions
+
+  await actions.karaokeAdd(ctx, { videoId: 'aaaaaaaaaaa', title: 'One' })
+  const before = JSON.stringify(ctx.state.items)
+  const commits = ctx.committed.length
+
+  const code = await actions.karaokeVote(ctx, { id: 'k_gone', singerId: 's1' })
+
+  assert.equal(code, 'E_NOT_QUEUED')
+  assert.equal(JSON.stringify(ctx.state.items), before)
+  assert.equal(ctx.committed.length, commits, 'a refusal commits nothing')
+  assert.equal(module.default.getters.getKaraokeTopVotedId(ctx.state), null)
+})
