@@ -1,0 +1,107 @@
+.karaokeSingers {
+  inline-size: 100%;
+  margin-block-end: 12px;
+}
+
+.karaokeSingersHeader {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.karaokeSingersTitle {
+  margin: 0;
+}
+
+.karaokeRotationLabel {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  font-size: 13px;
+}
+
+.karaokeRotation {
+  cursor: pointer;
+}
+
+.karaokeRotationFifo {
+  cursor: pointer;
+}
+
+.karaokeRotationRoundRobin {
+  cursor: pointer;
+}
+
+.karaokeSingersEmpty {
+  opacity: 0.7;
+  padding-block: 8px;
+}
+
+.karaokeSingersList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+  padding-inline-start: 0;
+  list-style: none;
+}
+
+.karaokeSinger {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding-block: 6px;
+  padding-inline: 10px;
+  border: 2px solid transparent;
+  border-radius: 16px;
+  background-color: var(--card-bg-color, rgb(0 0 0 / 5%));
+}
+
+.karaokeSinger.isHost {
+  font-weight: bold;
+}
+
+.karaokeSinger.isActiveTurn {
+  border-color: currentcolor;
+}
+
+.karaokeSingerColor {
+  inline-size: 14px;
+  block-size: 14px;
+  border-radius: 50%;
+}
+
+.karaokeSingerName {
+  font-weight: bold;
+}
+
+.karaokeSingerHost {
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.karaokeSingerTurn {
+  font-size: 11px;
+  text-transform: uppercase;
+  opacity: 0.8;
+}
+
+.karaokeSingerPending {
+  min-inline-size: 1.5em;
+  text-align: center;
+  opacity: 0.7;
+}
+
+.karaokeSingerToggle {
+  cursor: pointer;
+}
+
+.karaokeSingerRename {
+  cursor: pointer;
+}
+
+.karaokeSingerRelease {
+  cursor: pointer;
+}

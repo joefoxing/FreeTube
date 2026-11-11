@@ -1326,3 +1326,14 @@ Karaoke:
   Cannot Queue: That video cannot be queued
   No Karaoke Results: No karaoke results - try "Show unfiltered results"
   Karaoke Search Failed: Karaoke search failed
+  Singers: Singers
+  Host: Host
+  Your Turn: Your turn
+  Pending: Pending
+  Rename: Rename
+  Release Name: Release
+  Make Host: Make host
+  Rotation: Rotation
+  Rotation Fifo: In the order they were added
+  Rotation Round Robin: Take turns
+  No Singers: No singers yet - pair a phone to claim a name

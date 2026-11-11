@@ -59,6 +59,8 @@
       </button>
     </div>
 
+    <FtKaraokeSingers />
+
     <FtLoader v-if="isLoading" />
 
     <p
@@ -119,6 +121,7 @@ import { useRouter } from 'vue-router'
 
 import FtLoader from '../../components/FtLoader/FtLoader.vue'
 import FtKaraokeQueue from '../../components/FtKaraokeQueue/FtKaraokeQueue.vue'
+import FtKaraokeSingers from '../../components/FtKaraokeSingers/FtKaraokeSingers.vue'
 
 import store from '../../store'
 
