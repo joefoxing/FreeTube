@@ -251,6 +251,14 @@ export default {
    * @param {number} action
    * @param {any} [data]
    */
+  dbKaraoke: (action, data) => {
+    return ipcRenderer.invoke(IpcChannels.DB_KARAOKE, data ? { action, data } : { action })
+  },
+
+  /**
+   * @param {number} action
+   * @param {any} [data]
+   */
   dbSearchHistory: (action, data) => {
     return ipcRenderer.invoke(IpcChannels.DB_SEARCH_HISTORY, data ? { action, data } : { action })
   },

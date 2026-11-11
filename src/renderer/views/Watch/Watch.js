@@ -14,6 +14,7 @@ import WatchVideoPlaylist from '../../components/WatchVideoPlaylist/WatchVideoPl
 import WatchVideoRecommendations from '../../components/WatchVideoRecommendations/WatchVideoRecommendations.vue'
 import FtAgeRestricted from '../../components/FtAgeRestricted/FtAgeRestricted.vue'
 import FtTranscript from '../../components/FtTranscript/FtTranscript.vue'
+import FtKaraokeQueue from '../../components/FtKaraokeQueue/FtKaraokeQueue.vue'
 import { calculateColorLuminance } from '../../helpers/colors'
 import {
   buildChaptersVttFile,
@@ -78,6 +79,7 @@ export default defineComponent({
     'ft-loader': FtLoader,
     'ft-shaka-video-player': FtShakaVideoPlayer,
     'ft-transcript': FtTranscript,
+    FtKaraokeQueue,
     'watch-video-info': WatchVideoInfo,
     'watch-video-chapters': WatchVideoChapters,
     'watch-video-description': WatchVideoDescription,
@@ -272,6 +274,28 @@ export default defineComponent({
     autoplayEnabled: function () {
       return this.watchingPlaylist ? this.autoplayNextPlaylistVideo : this.autoplayNextRecommendedVideo
     },
+
+    karaokeActive: function () {
+      return this.$store.getters.getKaraokeActive
+    },
+
+    karaokeUpcoming: function () {
+      return this.$store.getters.getKaraokeUpcoming
+    },
+
+    // Karaoke owns the order only while there is something in the queue: an empty
+    // queue must not swallow the normal skip buttons.
+    karaokeOwnsOrder: function () {
+      return this.karaokeActive && (this.karaokeUpcoming.length > 0 || this.$store.getters.getKaraokeCurrent !== null)
+    },
+
+    // Spec §7: a playlist watch does not survive karaoke mode. When the queue owns
+    // next/prev on a page reached from a playlist, say so and offer the way out —
+    // two competing orderings on one screen is a bug with no error.
+    showKaraokePlaylistNotice: function () {
+      return this.watchingPlaylist && this.karaokeActive && this.karaokeUpcoming.length > 0
+    },
+
     thumbnailPreference: function () {
       return this.$store.getters.getThumbnailPreference
     },
@@ -1739,8 +1763,14 @@ export default defineComponent({
       this.activeFormat = 'audio'
     },
 
-    handleVideoEnded: function () {
+    handleVideoEnded: async function () {
       this.handleWatchProgressAutoSaveWhenProgressEnabled()
+
+      if (this.karaokeOwnsOrder) {
+        await this.karaokeAdvance()
+        return
+      }
+
       if (!this.autoplayEnabled) {
         return
       }
@@ -1802,9 +1832,65 @@ export default defineComponent({
       }
     },
 
+    /**
+     * Play a queue item now, marking it current so "next" knows where it was.
+     *
+     * @param {object} item
+     */
+    playKaraokeItem: function (item) {
+      this.$store.dispatch('karaokeStart', item.id)
+      this.$router.push({ path: `/watch/${item.videoId}` })
+    },
+
+    // The one action that leaves the mode, the same one the /karaoke view's leave button
+    // dispatches: order returns to the playlist the page was reached from.
+    leaveKaraokeMode: function () {
+      this.$store.dispatch('karaokeSetActive', false)
+    },
+
+    /**
+     * Move to the next queued song. An empty queue deliberately stops instead of
+     * falling back to recommended videos.
+     *
+     * @returns {Promise<boolean>} whether a song was started
+     */
+    karaokeAdvance: async function () {
+      await this.$store.dispatch('karaokeComplete')
+
+      const next = this.$store.getters.getKaraokeNext
+
+      if (!next) {
+        showToast(this.t('Karaoke.Queue Empty'))
+        return false
+      }
+
+      this.playKaraokeItem(next)
+      return true
+    },
+
+    /**
+     * @returns {Promise<boolean>} whether something was restored
+     */
+    karaokeGoBack: async function () {
+      const restored = await this.$store.dispatch('karaokePrevious')
+
+      if (!restored) {
+        showToast(this.t('Karaoke.Queue Empty'))
+        return false
+      }
+
+      this.$router.push({ path: `/watch/${restored.videoId}` })
+      return true
+    },
+
     // Skip to the next video if in a playlist
     // else next recommended video if autoplay enabled
     handleSkipToNext: function () {
+      if (this.karaokeOwnsOrder) {
+        this.karaokeAdvance()
+        return
+      }
+
       if (this.watchingPlaylist) {
         this.$refs.watchVideoPlaylist?.playNextVideo()
       } else if (!this.hideRecommendedVideos && this.nextRecommendedVideo) {
@@ -1817,6 +1903,11 @@ export default defineComponent({
 
     // Skip to the previous video in a playlist
     handleSkipToPrev: function () {
+      if (this.karaokeOwnsOrder) {
+        this.karaokeGoBack()
+        return
+      }
+
       this.$refs.watchVideoPlaylist?.playPreviousVideo()
     },
 

@@ -219,6 +219,11 @@ function startWeb () {
 
   const server = new WebpackDevServer({
     open: true,
+    // Full reloads, not HMR: hot-patching modules under a mounted tree leaves the router
+    // holding a null vnode, and every later navigation then dies in unmountComponent —
+    // the view freezes on the old route until the page is reloaded by hand.
+    hot: false,
+    liveReload: true,
     static: [
       {
         directory: path.resolve(__dirname, '..', 'static'),

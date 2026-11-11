@@ -35,12 +35,7 @@
         v-slot="{ Component }"
         class="routerView"
       >
-        <Transition
-          mode="out-in"
-          name="fade"
-        >
-          <component :is="Component" />
-        </Transition>
+        <component :is="Component" />
       </RouterView>
     </FtFlexBox>
     <FtPrompt
@@ -129,6 +124,12 @@ import packageDetails from '../../package.json'
 import { openExternalLink, openInternalPath, showToast } from './helpers/utils'
 import { translateWindowTitle } from './helpers/strings'
 import { loadLocale } from './i18n/index'
+import {
+  registerKaraoke,
+  start as startRemoteControl,
+  stop as stopRemoteControl
+} from './remote/index.js'
+import { createKaraokeActions } from './remote/karaoke-actions.js'
 import { getLocalClip } from './helpers/api/local.js'
 import { getClipInvidious } from './helpers/api/invidious.js'
 
@@ -230,7 +231,40 @@ onMounted(async () => {
   document.addEventListener('dragstart', handleDragStart)
 })
 
+onMounted(() => {
+  // The roster outlives a profile (it is a datastore), so it must be loaded once at start: an
+  // empty roster would leave every phone's claim resolving to nobody and the queue frame with no
+  // singers, even though the claims themselves are persisted.
+  store.dispatch('singersLoad')
+
+  if (store.getters.getRemoteControlEnabled) {
+    startRemoteControl(store.getters.getRemoteControlUrl)
+  }
+})
+
+watch(() => store.getters.getRemoteControlEnabled, enabled => {
+  if (enabled) startRemoteControl(store.getters.getRemoteControlUrl)
+  else stopRemoteControl()
+})
+
+/** The handlers a paired phone's queue commands land on, built against this store. */
+const karaokeActions = createKaraokeActions(store)
+
+/** Republish the queue frame the paired phones read, from the current store state. */
+function publishKaraokeQueue() {
+  registerKaraoke(store.state.karaoke, karaokeActions, () => store.getters.getSingers)
+}
+
+watch(() => store.state.karaoke, publishKaraokeQueue, { deep: true, immediate: true })
+
+// A roster edit made on the TV (rename / release / set-host / set-active) commits to
+// store.state.singers, never store.state.karaoke, so the watcher above does not fire and the
+// phones keep the stale roster until some other queue change or a reconnect. Republish the same
+// frame whenever the roster changes so the phones never disagree with what the TV shows.
+watch(() => store.state.singers, publishKaraokeQueue, { deep: true })
+
 onBeforeUnmount(() => {
+  stopRemoteControl()
   document.removeEventListener('keydown', handleKeyboardShortcuts)
   document.removeEventListener('mousedown', handleMouseDown)
   document.removeEventListener('dragstart', handleDragStart)

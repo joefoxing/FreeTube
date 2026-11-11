@@ -28,7 +28,7 @@
     >
       <FtLoader :fullscreen="false" />
       <p class="transcriptStage">
-        {{ stageLabel }}<span v-if="progress > 0"> · {{ Math.round(progress * 100) }}%</span>
+        {{ stageLabel }}<span v-if="progress > 0">{{ ` · ${Math.round(progress * 100)}%` }}</span>
       </p>
       <FtButton
         :label="t('Video.Player.Transcribe.Cancel')"
@@ -40,6 +40,7 @@
       v-else-if="state === 'error'"
       class="transcriptError"
     >
+      <!-- eslint-disable-next-line @intlify/vue-i18n/no-dynamic-keys -- key comes from the fixed ERROR_KEYS map in helpers/transcript.js -->
       <p>{{ t(mapTranscribeError(errorCode)) }}</p>
       <FtButton
         :label="t('Video.Player.Transcribe.Retry')"

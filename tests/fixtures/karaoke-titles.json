@@ -1,0 +1,27 @@
+{
+  "queries": [
+    { "input": "", "expected": "" },
+    { "input": "   ", "expected": "" },
+    { "input": "bohemian rhapsody", "expected": "bohemian rhapsody karaoke" },
+    { "input": "  Bohemian   Rhapsody  ", "expected": "Bohemian Rhapsody karaoke" },
+    { "input": "adele karaoke", "expected": "adele karaoke" },
+    { "input": "adele KARAOKE version", "expected": "adele KARAOKE version" },
+    { "input": "hello instrumental", "expected": "hello instrumental" },
+    { "input": "hello backing track", "expected": "hello backing track" },
+    { "input": "hello sing along", "expected": "hello sing along" },
+    { "input": "hello minus one", "expected": "hello minus one" },
+    { "input": "hello lyrics", "expected": "hello lyrics karaoke" }
+  ],
+  "videos": [
+    { "type": "video", "title": "Bohemian Rhapsody Karaoke (Instrumental)", "author": "Sing King", "lengthSeconds": 355, "karaoke": true },
+    { "type": "video", "title": "Bohemian Rhapsody (Official Video)", "author": "Queen Official", "lengthSeconds": 355, "karaoke": false },
+    { "type": "video", "title": "Bohemian Rhapsody", "author": "Karaoke Channel", "lengthSeconds": 355, "karaoke": true },
+    { "type": "video", "title": "Hello - Backing Track", "author": "Music Minus One", "lengthSeconds": 300, "karaoke": true },
+    { "type": "video", "title": "KTV 1080P 王菲 我愿意", "author": "KTV", "lengthSeconds": 240, "karaoke": true },
+    { "type": "video", "title": "Adele - Hello (Karaoke Version)", "author": "Too Short", "lengthSeconds": 30, "karaoke": false },
+    { "type": "video", "title": "Adele Hello karaoke", "author": "Too Long", "lengthSeconds": 900, "karaoke": false },
+    { "type": "video", "title": "Mystery Karaoke", "author": "Unknown Length", "lengthSeconds": null, "karaoke": true },
+    { "type": "video", "title": "Mystery Song", "author": "Unknown Length", "lengthSeconds": null, "karaoke": false },
+    { "type": "playlist", "title": "Karaoke hits playlist", "author": "Someone", "lengthSeconds": null, "karaoke": false }
+  ]
+}

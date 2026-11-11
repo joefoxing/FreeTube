@@ -2,11 +2,13 @@ import { createStore } from 'vuex'
 // import createPersistedState from 'vuex-persistedstate'
 
 import history from './modules/history'
+import karaoke from './modules/karaoke'
 import invidious from './modules/invidious'
 import playlists from './modules/playlists'
 import profiles from './modules/profiles'
 import settings from './modules/settings'
 import searchHistory from './modules/search-history'
+import singers from './modules/singers'
 import subscriptionCache from './modules/subscription-cache'
 import utils from './modules/utils'
 import player from './modules/player'
@@ -14,11 +16,13 @@ import player from './modules/player'
 export default createStore({
   modules: {
     history,
+    karaoke,
     invidious,
     playlists,
     profiles,
     settings,
     searchHistory,
+    singers,
     subscriptionCache,
     utils,
     player,

@@ -451,6 +451,13 @@ Settings:
       Token: Transcription service token
       Seconds Before: Seconds before the current position
       Seconds After: Seconds after the current position
+    Remote:
+      Enable: Enable remote control
+      Bridge: Remote bridge address
+      Pair: Pair a phone
+      Hint: Enter this code in the remote app. It works for five minutes.
+      Connected: Connected
+      Not Connected: Not connected
     Play Next Video: Autoplay Recommended Videos
     Autoplay Playlists: Autoplay Playlist Videos
     Autoplay Videos: Start Videos Automatically
@@ -1295,3 +1302,41 @@ KeyboardShortcutPrompt:
   End: Seek to the end of the video
   Skip to Next Video: Skip to the next video in a playlist or next recommended video
   Skip to Previous Video: Skip to the previous video in a playlist
+
+Karaoke:
+  Karaoke: Karaoke
+  Karaoke Mode: Karaoke Mode
+  Search Karaoke: Search karaoke
+  Now Singing: Now singing
+  Queue: Queue
+  Queue Empty: Queue empty
+  Add To Queue: Add to queue
+  Play Now: Play now
+  Play Next: Play next
+  Priority: Priority
+  Votes: Votes
+  Vote Mark: ▲
+  Top Voted: Top voted
+  Remove: Remove
+  Clear Queue: Clear queue
+  Leave Karaoke Mode: Leave karaoke mode
+  Playlist Notice: Karaoke is on - the queue controls the playlist's next and previous
+  Show Unfiltered Results: Show unfiltered results
+  Min Duration: Minimum length (seconds)
+  Max Duration: Maximum length (seconds)
+  Already Queued: Already in the queue
+  Priority Limit Reached: Priority limit reached - added to the normal queue
+  Cannot Queue: That video cannot be queued
+  No Karaoke Results: No karaoke results - try "Show unfiltered results"
+  Karaoke Search Failed: Karaoke search failed
+  Singers: Singers
+  Host: Host
+  Your Turn: Your turn
+  Pending: Pending
+  Rename: Rename
+  Release Name: Release
+  Make Host: Make host
+  Rotation: Rotation
+  Rotation Fifo: In the order they were added
+  Rotation Round Robin: Take turns
+  No Singers: No singers yet - pair a phone to claim a name

@@ -22,6 +22,7 @@ const IpcChannels = {
   DB_HISTORY: 'db-history',
   DB_PROFILES: 'db-profiles',
   DB_PLAYLISTS: 'db-playlists',
+  DB_KARAOKE: 'db-karaoke',
   DB_SEARCH_HISTORY: 'db-search-history',
   DB_SUBSCRIPTION_CACHE: 'db-subscription-cache',
 

@@ -66,7 +66,7 @@ export function createTranscribeClient({ fetchImpl = globalThis.fetch, sleep = d
     }
 
     const text = await response.text()
-    let payload = null
+    let payload
     try {
       payload = text ? JSON.parse(text) : null
     } catch {

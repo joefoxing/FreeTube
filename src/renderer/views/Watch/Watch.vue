@@ -32,6 +32,7 @@
           :thumbnail="thumbnail"
           :video-id="videoId"
           :channel-id="channelId"
+          :channel-name="channelName"
           :chapters="videoChapters"
           :current-chapter-index="videoCurrentChapterIndex"
           :chapters-src="chaptersSrc"
@@ -59,6 +60,27 @@
           @skip-to-prev="handleSkipToPrev"
           @player-reload-requested="onSabrReloadRequested"
           @transcribe="handleTranscribe"
+        />
+        <div
+          v-if="showKaraokePlaylistNotice"
+          class="karaokePlaylistNotice"
+        >
+          <span class="karaokePlaylistNoticeText">
+            {{ $t("Karaoke.Playlist Notice") }}
+          </span>
+          <button
+            class="karaokePlaylistNoticeLeave"
+            type="button"
+            @click="leaveKaraokeMode"
+          >
+            {{ $t("Karaoke.Leave Karaoke Mode") }}
+          </button>
+        </div>
+        <FtKaraokeQueue
+          v-if="karaokeActive"
+          class="karaokeQueueBar"
+          compact
+          @play="playKaraokeItem"
         />
         <ft-transcript
           :visible="transcriptVisible"

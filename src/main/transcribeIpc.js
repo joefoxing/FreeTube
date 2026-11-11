@@ -22,9 +22,11 @@ export function registerTranscribeIpc({ ipcMain, client = createTranscribeClient
     const { videoId, startSeconds, endSeconds, serviceUrl, token } = payload ?? {}
 
     if (!serviceUrl) {
+      // eslint-disable-next-line no-throw-literal -- Electron IPC rejects arrive as code-less Errors
       throw { code: 'E_WINDOW_INVALID', message: 'no transcription service configured' }
     }
     if (activeJobs.size > 0) {
+      // eslint-disable-next-line no-throw-literal -- same shape as above
       throw { code: 'E_BUSY', message: 'a transcription is already running' }
     }
 
@@ -76,6 +78,7 @@ export function registerTranscribeIpc({ ipcMain, client = createTranscribeClient
     } catch (error) {
       const code = error.code ?? 'E_TRANSCRIBE_FAILED'
       send({ jobId, state: 'error', stage: 'error', progress: 0, error: { code, message: error.message } })
+      // eslint-disable-next-line no-throw-literal -- mirrors the failure back to the renderer
       throw { code, message: error.message }
     } finally {
       if (jobId !== null) {

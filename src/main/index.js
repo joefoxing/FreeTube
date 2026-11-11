@@ -2027,6 +2027,43 @@ function runApp() {
 
   // *********** //
 
+  // *********** //
+  // Karaoke
+  // ! NOTE: no cross-window sync (there is no SYNC_KARAOKE channel); the TV window is the roster's only reader
+  ipcMain.handle(IpcChannels.DB_KARAOKE, async (event, { action, data }) => {
+    if (!isFreeTubeUrl(event.senderFrame.url)) {
+      return
+    }
+
+    try {
+      switch (action) {
+        case DBActions.GENERAL.FIND:
+          return await baseHandlers.karaoke.find()
+
+        case DBActions.GENERAL.UPSERT:
+          await baseHandlers.karaoke.upsert(data)
+          return null
+
+        case DBActions.GENERAL.DELETE:
+          await baseHandlers.karaoke.remove(data)
+          return null
+
+        case DBActions.GENERAL.DELETE_ALL:
+          await baseHandlers.karaoke.removeAll()
+          return null
+
+        default:
+          // eslint-disable-next-line no-throw-literal
+          throw 'invalid karaoke db action'
+      }
+    } catch (err) {
+      if (typeof err === 'string') throw err
+      else throw err.toString()
+    }
+  })
+
+  // *********** //
+
   // ************** //
   // Search History
   ipcMain.handle(IpcChannels.DB_SEARCH_HISTORY, async (event, { action, data }) => {

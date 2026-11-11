@@ -1,4 +1,5 @@
 import { computed, defineComponent, nextTick, onBeforeUnmount, onMounted, onUnmounted, reactive, ref, shallowRef, watch } from 'vue'
+import { registerPlayer, unregisterPlayer } from '../../remote/index.js'
 import shaka from 'shaka-player'
 import { useI18n } from 'vue-i18n'
 
@@ -127,6 +128,10 @@ export default defineComponent({
       default: ''
     },
     title: {
+      type: String,
+      default: ''
+    },
+    channelName: {
       type: String,
       default: ''
     },
@@ -3448,6 +3453,24 @@ export default defineComponent({
 
       return uiState
     }
+
+    onMounted(() => {
+      registerPlayer(video.value, () => ({
+        videoId: props.videoId,
+        title: props.title,
+        channel: props.channelName,
+        thumbnail: props.thumbnail
+      }), {
+        // The same events the on-screen skip buttons emit, so playlist vs
+        // autoplay semantics stay in Watch.js.
+        next: () => emit('skip-to-next'),
+        prev: () => emit('skip-to-prev')
+      })
+    })
+
+    onBeforeUnmount(() => {
+      unregisterPlayer(video.value)
+    })
 
     expose({
       hasLoaded,
