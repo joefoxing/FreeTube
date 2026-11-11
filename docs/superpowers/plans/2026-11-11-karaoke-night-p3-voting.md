@@ -426,8 +426,11 @@ git commit -m "feat(karaoke): the vote rules, as pure reducer state"
 - Consumes: `toggleVote`, `voteCount`, `topVoted` from Task 1, and the module's existing `snapshot(state)`
   / `persist(queue)` helpers.
 - Produces: action `karaokeVote({id, singerId}) -> Promise<string|null>`; getters
-  `getKaraokeVoteCount(id) -> number`, `getKaraokeTopVotedId -> string|null`, `getKaraokeVotes -> object`
-  (`itemId -> singerId[]`).
+  `getKaraokeVoteCount(id) -> number`, `getKaraokeTopVotedId -> string|null`.
+
+*(Ruling: no `getKaraokeVotes` map getter. The only consumer of an `itemId -> voters` map is the wire
+frame, which the agent builds from the raw state in Task 3 — a second builder here would be two
+implementations of one shape, and the TV reads counts through `getKaraokeVoteCount` instead.)*
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -451,7 +454,6 @@ test('a vote lands on the queue row, moves it and persists', async () => {
   assert.equal(code, null)
   assert.equal(getters.getKaraokeVoteCount(ctx.state)(target), 1)
   assert.equal(getters.getKaraokeTopVotedId(ctx.state), target)
-  assert.deepEqual(getters.getKaraokeVotes(ctx.state), { [target]: ['s1'] })
   // The row moved to the head of the normal tier, and the move is persisted.
   assert.deepEqual(ctx.state.items.map(item => item.title), ['Two', 'One'])
   assert.deepEqual(JSON.parse(storage.dump()['freetube-karaoke']).items[0].votes, ['s1'])
@@ -1092,6 +1094,10 @@ def test_the_command_limit_is_per_phone(tmp_path):
         await until(lambda: len([m for m in player.sent if m.get("t") == "cmd"]) == 2)
 
         assert [m.get("code") for m in first.sent if m.get("t") == "ack"] == [None, "E_TOO_MANY"]
+        # ^ CORRECTED IN IMPLEMENTATION: a relayed command is acked by the PLAYER, so the only
+        # ack a phone gets from the bridge is a refusal. The landed assertion is
+        # `== [{"t":"ack","id":2,"ok":False,"code":"E_TOO_MANY"}]` plus a check that the relayed
+        # commands carry one `from` per phone. The plan's original line encoded a wrong model.
         # The other phone is untouched: its command was relayed, not refused.
         assert second.sent[-1].get("code") is None
 
@@ -1242,3 +1248,62 @@ git commit -m "docs(karaoke): P3 status and measured evidence"
   flag before the open branch.
 - **What P3 does not do.** Drag reordering (P4), saved playlists (P5), scoring (P6), downvotes (out of
   scope in the spec), and any TV-side vote button — the TV is display-only for votes per §5.
+
+---
+
+## Evidence recorded 2026-11-11 (Task 7, as executed)
+
+**Step 1 — the three suites, read from the raw runs (not from this plan):**
+
+| suite | command | tests | pass | fail |
+|---|---|---|---|---|
+| renderer | `node --test "tests/*.test.cjs"` (freetube) | 170 | 170 | 0 |
+| bridge | `uv run pytest tests -q` (freetube-remote) | — | 45 | 0 |
+| phone web | `node --test "tests-web/*.test.mjs"` | 19 | 19 | 0 |
+
+The plan predicted 12 new vote tests; Task 1 landed 13 (164 after T1, 166 after T2, 170 after T3).
+
+**Step 2 — a vote moves a song on the TV, against the real bridge. DONE.**
+TV = the dev web build (`http://100.77.173.63:9080/#/karaoke`) on branch `karaoke-night-p3`; phone = the
+real PWA (`https://nextcloud.taild1347f.ts.net:10000/remote/`) paired with a code minted on the TV.
+Queue seeded Alpha/Bravo/Charlie, all unvoted. The phone tapped ▲ on the LAST row (Charlie):
+
+- phone read back: `Charlie "▲ 1" class="vote voted"`, then `Alpha`, then `Bravo`
+- TV DOM read back: `{"title":"Charlie","votes":"▲ 1","badges":["Top voted [topVoted]"]}`, Alpha and
+  Bravo with `votes: null` and no badges
+- TV's persisted queue: `items.map(i => [i.title, i.votes])` →
+  `[["Charlie",["s_mwcgzi48_5zlq"]],["Alpha",[]],["Bravo",[]]]`
+
+A second tap on the same row dropped it: phone `"▲" class="vote"`, TV DOM `votes: null`, badges `[]`,
+stored `[["Charlie",[]], ...]`. A third tap returned it to `"▲ 1"`.
+
+**Step 3 — one vote per singer, across a re-pair. DONE, with a deviation.**
+The phone's storage was cleared, the TV minted a second code, and the phone paired again (the bridge
+minted a new `from`). The plan's next move — "claim the SAME roster name again" — is refused by P2's
+name-taken rule: `"Someone already has that name. Pick another."`, twice, with the roster row visible
+on the TV as `Ada · host` and still live. So a re-paired phone cannot silently re-bind to the same
+roster row while that row is active.
+
+What the spec's §5 actually asserts is the stronger invariant — "the roster row, not the device, is
+the voter" — and that was measured: after re-pairing and claiming a *different* name (`Bo`), Charlie's
+row still read `"▲ 1"` with class `vote`, NOT `voted`. The re-paired device did not own Ada's vote.
+Re-pairing therefore buys nothing: the count is a function of roster rows, not of sockets.
+
+**Step 4 — the refusals are visible. NOT ACHIEVED LIVE; the plan's step as written is unreachable.**
+The phone's list is built from the frame's `upcoming` only (`orderOwn(karaoke?.upcoming ?? [], …)`), so
+a song that has started playing is not on the phone and has no ▲ to tap. The `E_NOT_QUEUED` guard is
+reachable only by a stale frame — a millisecond race between the tap and the republish — or by a
+synthetic ack. The two messages the phone can print are unit-tested
+(`voteFailure('E_NOT_QUEUED')` → "That song is not in the queue any more.",
+`voteFailure('E_TOO_MANY')` → "Slow down a moment — the TV is refusing commands."),
+and the phone's ack branch that prints them is `state.votePending` → `voteFailure`. To make this
+step testable, the ack branch needs to move out of `app.js` into a pure helper with its own test;
+that is a follow-up, not something this phase claimed.
+
+**Step 5 — this file, and the spec's status line. DONE.**
+
+**Environment change made to run Step 2, and it is reversible:** the TV page's origin was refused
+4403 by the bridge's origin check, so `http://100.77.173.63:9080` was appended to
+`FREETUBE_REMOTE_ALLOWED_ORIGINS` in `~/.config/systemd/user/freetube-remote.service` (the same
+precedent as adding `app://bundle`, design spec §"Evidence"), then `systemctl --user daemon-reload`
+and restart. Remove that entry to undo.
