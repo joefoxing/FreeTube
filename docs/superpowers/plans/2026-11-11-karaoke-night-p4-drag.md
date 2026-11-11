@@ -221,3 +221,57 @@ sentence on screen.
    point of confusion, matching how the vote button behaves before a name is claimed.
 3. **The TV has no permission check.** Whoever holds the TV is the console's operator — the same
    assumption the existing local Play now/Remove/Clear buttons already make.
+
+## Evidence recorded 2026-11-11 (P4, as executed)
+
+Commits (renderer): `6e911c634` plan, `3c20e9d26` the gate, `074f02131` the helpers, `764e9ff7e` the
+move-gate fixtures, `da2ad465e` the TV, `c7094d2a8` the drop fix. Commits (bridge/phone): `c63d590`.
+
+**Task 1** — the gate landed with four tests at the enforcement point (own row moves; another's row is
+`E_NOT_YOURS` with nothing dispatched; an unclaimed phone moves nothing; the host moves anything).
+Fixture lesson, recorded because it nearly shipped a gate that proved nothing: the FIRST claimant holds
+the host row, so a one-singer fixture made the sender a host and the "refused" case passed for the
+wrong reason. Every case now asserts the sender is not the host.
+
+**Task 2** — `dropToIndex`, `stepToIndex`, `dropMove` in `src/renderer/helpers/karaoke-move.js`
+(9 tests), mirrored by `moveTarget` in `web/karaoke.js` (the two repos share no package; the rule is
+written and tested twice on purpose).
+
+**The live proof earned its keep.** On the published build, dragging Charlie from the top onto
+position 2 produced `[Charlie*, Bravo*, Alpha*]` — Bravo had moved. The handler named
+`shown[target].id`, the row UNDER the cursor, and moving that row reorders the list just as
+convincingly as moving the dragged one: the arithmetic is per-row, so no screenshot or assertion about
+"the order changed" could have caught it — only dragging a specific row and reading WHICH row moved.
+The decision moved into `dropMove` (with the test "a drop moves the row that was DRAGGED, not the row
+it was dropped on"), and `dropOn` is now three lines that cannot get it wrong on its own. The plan's
+own snippet carried the same bug and was corrected above.
+
+**Delivered, on the published build** (`c7094d2a8`, metube.joefoxing.it.com): seeded
+`[Alpha*, Bravo, Charlie]`, next `Alpha` → two clicks of Charlie's own Move up button →
+`[Charlie*, Alpha*, Bravo]`, next `Charlie` (crossed the boundary upward: gained the badge, became the
+next pick) → drag Charlie from the top onto position 2 → `[Alpha*, Charlie, Bravo]`, next `Alpha`
+(the dragged row travelled, and lost priority because it landed outside the run). The affordance
+classes were observed mid-drag (`isDragging` on the source row, `isDropTarget` on the target), and the
+persisted queue read back `[Alpha*, Charlie, Bravo]`.
+
+**Not live-exercised: the phone's buttons.** `getRemoteControlEnabled` is FALSE in the TV's settings on
+that build (the bridge URL is correctly `wss://nextcloud.taild1347f.ts.net:10000/remote/ws`, the toggle
+is off), so there is no pairing code and no way to reach a phone flow without changing the user's
+setting. What IS verified for the phone half: `canMove`/`moveTarget`/the refusal sentences in the phone
+suite (23 tests), the four renderer tests that enforce the rule server-side, and the deployed bundle
+carrying the code. The wiring between a phone button and those helpers has no unit test (app.js is not
+reachable from `node --test`), so it is the one link still resting on inspection: to close it, switch
+Remote Control on in Settings → Player (which reveals "Pair a phone"), pair, claim a name, and add a
+song from the phone so one row is owned by the claim.
+
+**Two deployment defects found while proving it, both fixed:**
+
+1. `web.js` is not content-hashed but was served `public, max-age=600`, so a browser could run a
+   previous release's bundle against a new `index.html` for ten minutes — measured: a fix that had
+   been published minutes earlier "did not work" until the cache expired. Caddy now sends `no-store`
+   for `/` and `/index.html`, `public, max-age=31536000, immutable` for content-hashed files, and
+   `no-cache` (revalidate; the ETag makes it a 304) for everything else, `web.js` included.
+2. Caddy's `header` precedence is not "last match wins" as this session first recorded: a PLAIN
+   `header` (no matcher) beats a matcher-scoped one for the same field whatever the Caddyfile order
+   (measured both ways). The metube rules are therefore MUTUALLY EXCLUSIVE — one rule matches any
+   given path — because that is the only construction that cannot be overridden by accident.
