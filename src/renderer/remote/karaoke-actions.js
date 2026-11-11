@@ -46,11 +46,19 @@ export function createKaraokeActions(store) {
     // The claim binds the bridge's phone id — the only identity a phone can prove, stamped on the
     // relayed command as `from` — to a roster row. The phone sends a name; the phone id comes from
     // the bridge's `from`, never from the payload, so a phone cannot claim a row for another phone.
-    singerClaim: payload => store.dispatch('singerClaim', {
-      name: payload?.name,
-      phoneId: payload?.from,
-      source: 'phone'
-    }),
+    // The payload is rebuilt field by field (never spread), so a phone cannot smuggle extra keys
+    // into the store action. The store action returns `{singer, code}`; only the code crosses back
+    // so a REJECTED claim (e.g. a name another phone already holds) reaches the ack as a failure
+    // instead of a silent success — this is the string-or-null contract every sibling keeps.
+    singerClaim: async payload => {
+      const { code } = await store.dispatch('singerClaim', {
+        name: payload?.name,
+        phoneId: payload?.from,
+        source: payload?.source
+      })
+
+      return code
+    },
     // Attribution: once the phone has claimed a singer, that singer is the requester — the priority
     // cap counts singers, so re-pairing a phone must not buy a second allowance. An unclaimed phone
     // keeps the P1 behaviour (its own `from`, else the reducer's default). The `singerId` rides the

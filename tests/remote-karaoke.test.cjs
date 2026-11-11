@@ -311,20 +311,53 @@ test('an add from an unclaimed phone falls back to the bridge phone id', async (
 })
 
 test('the queue frame carries the roster but never inside the state frame', async () => {
-  const { buildQueueFrame, buildState } = await load()
+  const { createRemoteAgent } = await load()
   const { createRoster, claimSinger } = await loadRoster()
   const { createQueue } = await loadQueue()
 
   const roster = claimSinger(createRoster(), { name: 'Ada', phoneId: 'ph_a' }).roster
-  const queue = { ...createQueue(), active: true }
-  const frame = buildQueueFrame(queue, roster)
-  // buildState reads the media element's fields, so it needs a real-shaped video, not null.
-  const video = { duration: 0, currentTime: 0, paused: true, volume: 1, muted: false, playbackRate: 1 }
-  const state = { ...buildState({ title: 'T', videoId: 'aaaaaaaaaaa' }, video, 0), karaokeActive: true }
+  const karaoke = { ...createQueue(), active: true }
+  const video = new EventTarget()
+  Object.assign(video, { paused: true, currentTime: 0, duration: 0, volume: 1, muted: false, playbackRate: 1 })
 
-  assert.equal(frame.singers.length, 1)
-  assert.equal(frame.singers[0].name, 'Ada')
-  assert.deepEqual(Object.keys(state).sort(), STATE_FRAME_KEYS)
+  FakeSocket.instances = []
+  const agent = createRemoteAgent({
+    url: 'wss://nextcloud.taild1347f.ts.net:10000/remote/ws',
+    deviceKey: 'device-key',
+    getVideo: () => video,
+    getMeta: () => ({ videoId: 'aaaaaaaaaaa', title: 'T', channel: 'C', thumbnail: '' }),
+    getActions: () => null,
+    getKaraoke: () => karaoke,
+    getSingers: () => roster,
+    getKaraokeActions: () => null,
+    WebSocketImpl: FakeSocket,
+    now: () => 0,
+    setTimeoutImpl: () => 0,
+    clearTimeoutImpl: () => {},
+    setIntervalImpl: () => 0,
+    clearIntervalImpl: () => {}
+  })
+
+  agent.start()
+  const socket = FakeSocket.instances.at(-1)
+  socket.open()
+
+  // Both frames are read from what the agent PUT ON THE WIRE, not re-derived from the builders:
+  // the queue frame (over the real send path) carries the roster...
+  const queueFrame = socket.sent.find(m => m.t === 'queue')
+  assert.ok(queueFrame, 'a queue frame is sent when the socket opens')
+  assert.equal(queueFrame.karaoke.singers.length, 1)
+  assert.equal(queueFrame.karaoke.singers[0].name, 'Ada')
+
+  // ...and the state frame the agent actually sends carries karaokeActive and nothing roster-
+  // or queue-shaped — its exact key set, so an extra key (e.g. the roster inlined) fails.
+  const stateFrame = socket.sent.find(m => m.t === 'state')
+  assert.ok(stateFrame, 'a state frame is sent when the socket opens')
+  assert.deepEqual(Object.keys(stateFrame.state).sort(), STATE_FRAME_KEYS, 'the state frame carries karaokeActive and nothing roster- or queue-shaped')
+  assert.equal('singers' in stateFrame.state, false, 'the roster is not inlined into the state frame')
+  assert.equal('queue' in stateFrame.state, false, 'the queue is not inlined into the state frame')
+
+  agent.stop()
 })
 
 test('a frame with no roster sends an empty singers list, not undefined', async () => {
@@ -410,4 +443,91 @@ test('a claim over the wire reaches the roster and names the singer on the queue
   assert.equal(socket.sent.filter(m => m.t === 'queue').at(-1).karaoke.upcoming.at(-1).singerId, singers.roster[0].id)
 
   agent.stop()
+})
+
+// --- the claim's ack tells the truth -------------------------------------------------
+//
+// The whole point of the code crossing back from the action map: a phone that claims a name
+// already held by ANOTHER phone must be told it failed. Otherwise it adopts the real holder's
+// singerId and queues as someone else. `applyKaraokeCommand` surfaces a code only when the action
+// returns a STRING, so `singerClaim` must return the store action's `code` (string|null) — the
+// bare arrow returned the `{singer, code}` OBJECT, which read as "no code" and acked a rejected
+// claim ok:true. These two cases pin both directions of that string-or-null contract.
+
+// Builds a real agent over a FakeSocket whose action map is the REAL createKaraokeActions. The
+// singers store module persists through nedb (unimportable under node --test), so its dispatch is
+// stood in by the pure claimSinger helper — the same stand-in the wire test above uses.
+async function claimOverWire({ roster, name, from, id }) {
+  const { createRemoteAgent } = await load()
+  const { createKaraokeActions } = await loadActions()
+  const { claimSinger } = await loadRoster()
+
+  const singers = { roster }
+  const dispatch = (type, payload) => {
+    if (type === 'singerClaim') {
+      const { roster: next, singer, code } = claimSinger(singers.roster, payload)
+      if (code === null) singers.roster = next
+      return { singer, code }
+    }
+    return null
+  }
+  const karaokeActions = createKaraokeActions({ dispatch, getters: { getSingerByPhone: () => null } })
+
+  const video = new EventTarget()
+  Object.assign(video, { paused: true, currentTime: 0, duration: 100, volume: 1, muted: false, playbackRate: 1 })
+
+  FakeSocket.instances = []
+  const agent = createRemoteAgent({
+    url: 'wss://nextcloud.taild1347f.ts.net:10000/remote/ws',
+    deviceKey: 'device-key',
+    getVideo: () => video,
+    getMeta: () => ({ videoId: 'abc', title: 'T', channel: 'C', thumbnail: '' }),
+    getActions: () => null,
+    getKaraoke: () => ({ items: [], played: [], active: false }),
+    getKaraokeActions: () => karaokeActions,
+    getSingers: () => singers.roster,
+    WebSocketImpl: FakeSocket,
+    now: () => 0,
+    setTimeoutImpl: () => 0,
+    clearTimeoutImpl: () => {},
+    setIntervalImpl: () => 0,
+    clearIntervalImpl: () => {}
+  })
+
+  agent.start()
+  const socket = FakeSocket.instances.at(-1)
+  socket.open()
+  socket.sent.length = 0
+
+  socket.receive({ t: 'cmd', id, cmd: 'singerClaim', name, from })
+  await flush()
+
+  const ack = socket.sent.find(m => m.t === 'ack' && m.id === id)
+  agent.stop()
+  return { ack, singers }
+}
+
+test('a rejected claim is acked as a failure with its code, never a false success', async () => {
+  const { createRoster, claimSinger } = await loadRoster()
+
+  // 'Ada' is already held by ph_a; ph_b claims the same name and must be refused E_NAME_TAKEN.
+  const roster = claimSinger(createRoster(), { name: 'Ada', phoneId: 'ph_a' }).roster
+  const { ack, singers } = await claimOverWire({ roster, name: 'Ada', from: 'ph_b', id: 9 })
+
+  assert.ok(ack, 'the claim is acked')
+  assert.equal(ack.ok, false, 'a claim of a name another phone holds is NOT a success')
+  assert.equal(ack.code, 'E_NAME_TAKEN', 'the refusal code reaches the ack')
+  assert.equal(singers.roster.length, 1, 'the rejected claim added no roster row')
+})
+
+test('a successful claim is acked ok:true with no code', async () => {
+  const { createRoster } = await loadRoster()
+
+  const { ack, singers } = await claimOverWire({ roster: createRoster(), name: 'Grace', from: 'ph_c', id: 10 })
+
+  assert.ok(ack, 'the claim is acked')
+  assert.equal(ack.ok, true, 'a free name is claimed')
+  assert.equal('code' in ack, false, 'a success carries no refusal code')
+  assert.equal(singers.roster.length, 1, 'the successful claim added its roster row')
+  assert.equal(singers.roster[0].phoneId, 'ph_c')
 })
