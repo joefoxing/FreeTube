@@ -51,6 +51,18 @@
   color: var(--primary-color-text, #fff);
 }
 
+.karaokeQueueVotes {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  opacity: 0.85;
+}
+
+.karaokeQueueBadge.topVoted {
+  /* Distinct from the priority badge: a vote is a suggestion, priority is a jump. */
+  outline: 1px solid currentcolor;
+}
+
 .karaokeQueueButton {
   cursor: pointer;
 }

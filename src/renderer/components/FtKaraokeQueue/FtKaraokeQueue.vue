@@ -6,6 +6,12 @@
     >
       <span class="karaokeQueueLabel">{{ t('Karaoke.Now Singing') }}</span>
       <span class="karaokeQueueTitle">{{ current.title }}</span>
+      <span
+        v-if="currentVotes > 0"
+        class="karaokeQueueVotes"
+      >
+        {{ t('Karaoke.Vote Mark') }} {{ currentVotes }}
+      </span>
     </div>
 
     <div
@@ -32,6 +38,19 @@
           class="karaokeQueueBadge"
         >
           {{ t('Karaoke.Priority') }}
+        </span>
+        <span
+          v-if="voteCount(item.id) > 0"
+          class="karaokeQueueVotes"
+          :title="t('Karaoke.Votes')"
+        >
+          {{ t('Karaoke.Vote Mark') }} {{ voteCount(item.id) }}
+        </span>
+        <span
+          v-if="topVotedId === item.id"
+          class="karaokeQueueBadge topVoted"
+        >
+          {{ t('Karaoke.Top Voted') }}
         </span>
         <template v-if="!compact">
           <button
@@ -91,6 +110,16 @@ const current = computed(() => store.getters.getKaraokeCurrent)
 const upcoming = computed(() => store.getters.getKaraokeUpcoming)
 // The bar on the watch page shows what is next, not the whole night.
 const shown = computed(() => (props.compact ? upcoming.value.slice(0, 3) : upcoming.value))
+const topVotedId = computed(() => store.getters.getKaraokeTopVotedId)
+const currentVotes = computed(() => store.getters.getKaraokeVoteCount(current.value?.id))
+
+/**
+ * @param {string} id
+ * @returns {number}
+ */
+function voteCount(id) {
+  return store.getters.getKaraokeVoteCount(id)
+}
 
 /** @param {object} item */
 function play(item) {
