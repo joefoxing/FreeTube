@@ -1,0 +1,39 @@
+name: Tests
+
+on:
+  push:
+    branches: [ development, master ]
+  pull_request:
+    branches: [ development, master, '**-RC' ]
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  renderer-tests:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 #v7.0.1
+      with:
+        persist-credentials: false
+
+    - name: Use Node.js 22.x
+      uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 #v7.1.0
+      with:
+        node-version: 22.x
+
+    # Deliberately NO install step. This suite imports only the repo's own
+    # modules (the renderer helpers/store/remote agent and the injected-dependency
+    # main modules), so it runs with no node_modules at all -- verified by running
+    # it in a fresh `git worktree` that had none: 170 passed. Adding `pnpm install`
+    # would download Electron on every run to test code that never loads it.
+    - name: Renderer unit tests
+      run: node --test "tests/*.test.cjs"
