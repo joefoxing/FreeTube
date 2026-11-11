@@ -250,7 +250,18 @@ watch(() => store.getters.getRemoteControlEnabled, enabled => {
 /** The handlers a paired phone's queue commands land on, built against this store. */
 const karaokeActions = createKaraokeActions(store)
 
-watch(() => store.state.karaoke, karaoke => registerKaraoke(karaoke, karaokeActions, () => store.getters.getSingers), { deep: true, immediate: true })
+/** Republish the queue frame the paired phones read, from the current store state. */
+function publishKaraokeQueue() {
+  registerKaraoke(store.state.karaoke, karaokeActions, () => store.getters.getSingers)
+}
+
+watch(() => store.state.karaoke, publishKaraokeQueue, { deep: true, immediate: true })
+
+// A roster edit made on the TV (rename / release / set-host / set-active) commits to
+// store.state.singers, never store.state.karaoke, so the watcher above does not fire and the
+// phones keep the stale roster until some other queue change or a reconnect. Republish the same
+// frame whenever the roster changes so the phones never disagree with what the TV shows.
+watch(() => store.state.singers, publishKaraokeQueue, { deep: true })
 
 onBeforeUnmount(() => {
   stopRemoteControl()

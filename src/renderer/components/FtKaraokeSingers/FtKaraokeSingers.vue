@@ -107,13 +107,11 @@ const singers = computed(() => store.getters.getSingers)
 const rotation = computed(() => store.getters.getKaraokeRotation)
 const upcoming = computed(() => store.getters.getKaraokeUpcoming)
 
-// Whose song plays next drives the "your turn" highlight: the head of the queue, priority first,
-// is the row that will sing. The roster order itself carries no turn — the queue does.
-const nextSingerId = computed(() => {
-  const first = upcoming.value.find(item => item.priority) ?? upcoming.value[0]
-
-  return first?.singerId ?? null
-})
+// Whose song plays next drives the "your turn" highlight. getKaraokeNext is the same
+// rotation-aware pick the queue itself plays by (priority first, then the roster helper's
+// nextSingerId under round_robin), so the highlight agrees with the queue in both modes; a
+// queue-head proxy would name a different singer than rotation under round_robin.
+const nextSingerId = computed(() => store.getters.getKaraokeNext?.singerId ?? null)
 
 /**
  * @param {string} singerId
